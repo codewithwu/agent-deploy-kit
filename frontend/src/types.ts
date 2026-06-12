@@ -22,12 +22,3 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
 }
-
-/** 后端 ChatRequest / ChatResponse 契约(只用到入参与出参) */
-export interface ApiChatRequest {
-  messages: { role: string; content: string }[];
-}
-
-export interface ApiChatResponse {
-  reply: string;
-}

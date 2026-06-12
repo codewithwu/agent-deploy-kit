@@ -17,7 +17,6 @@ import type { ChatMessage } from "@/types";
 interface ChatWindowProps {
   /** 智能体名,显示在顶栏 */
   agentName?: string;
-  /** 移动端侧边栏 open 状态由父组件控制(可选,本组件内自带) */
 }
 
 export function ChatWindow({ agentName = "Weather Agent" }: ChatWindowProps) {
