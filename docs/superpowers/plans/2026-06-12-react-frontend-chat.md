@@ -461,6 +461,22 @@ pnpm add @radix-ui/react-slot
 pnpm add -D tailwindcss-animate
 ```
 
+- [ ] **Step 1.5: 在 `frontend/tailwind.config.js` 中注册 `tailwindcss-animate`**
+
+shadcn/ui 组件的进入/退出动画(`sheet`、`dialog`、`dropdown-menu`、`tooltip`、`scroll-area` 等)都依赖 `tailwindcss-animate` 提供的 `animate-in` / `animate-out` / `fade-*` / `slide-in-*` 等工具类。装了包但没注册到 plugins 时,这些类名是无效的,组件虽然能渲染但动画会"无动画"出现。
+
+修改 `frontend/tailwind.config.js`:
+
+1. 在文件顶部添加 import:
+   ```js
+   import animate from "tailwindcss-animate";
+   ```
+
+2. 把 `plugins: []` 改为:
+   ```js
+   plugins: [animate],
+   ```
+
 - [ ] **Step 2: 创建 `frontend/components.json`**
 
 ```json
