@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatApiError, postChat } from "@/lib/api";
 import { useChatContext } from "@/context/ChatContext";
 import type { ChatMessage } from "@/types";
@@ -24,10 +24,16 @@ export function useChat(): UseChatValue {
   const [isSending, setIsSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  // 组件卸载时取消尚未完成的请求
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+
+      // 取消上一次仍在飞行的请求(切换会话 / 重复点击发送时避免泄漏)
+      abortRef.current?.abort();
 
       // 1. 确保有会话
       let id = currentId;
