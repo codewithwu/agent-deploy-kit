@@ -556,6 +556,8 @@ cd frontend
 pnpm dlx shadcn@latest add button input textarea scroll-area sonner dropdown-menu sheet tooltip separator avatar skeleton --yes --overwrite
 ```
 
+> **注**：在本机环境中,`pnpm dlx shadcn@latest` 会因为 pnpm 11 store 缓存的 `@modelcontextprotocol/sdk@1.29.0` 出现 `ERR_PACKAGE_PATH_NOT_EXPORTED` 崩溃。如果遇到,把上面的命令替换为 `npm exec -- shadcn@latest add ... --yes --overwrite` 即可,产物字节级一致。
+
 **预期**：每个组件的 .tsx 文件出现在 `src/components/ui/`；CLI 提示 "Success"。
 
 - [ ] **Step 3: 检查生成的文件**
