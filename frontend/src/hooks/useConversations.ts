@@ -31,24 +31,15 @@ export interface UseConversationsValue {
 }
 
 export function useConversations(): UseConversationsValue {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  // 惰性初始化:首屏渲染前从 localStorage 同步读取,避免 effect 里的 setState 级联重渲染
+  const [conversations, setConversations] = useState<Conversation[]>(() =>
+    loadConversations(),
+  );
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
 
-  // 水合:从 localStorage 读一次
   useEffect(() => {
-    const loaded = loadConversations();
-    if (loaded.length > 0) {
-      setConversations(loaded);
-    }
-    setHydrated(true);
-  }, []);
-
-  // 持久化:水合之后才写
-  useEffect(() => {
-    if (!hydrated) return;
     saveConversations(conversations);
-  }, [conversations, hydrated]);
+  }, [conversations]);
 
   const createConversation = useCallback((): string => {
     const id = newId();
