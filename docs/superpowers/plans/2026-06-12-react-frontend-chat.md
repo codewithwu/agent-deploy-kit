@@ -628,7 +628,12 @@ export default defineConfig({
 ```ts
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
+
+// jsdom 不实现 scrollIntoView,MessageList 的 useEffect 会调到,补 noop 桩。
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn();
+}
 
 afterEach(() => {
   cleanup();
@@ -1680,6 +1685,7 @@ export function useChat(): UseChatValue {
       setIsSending(true);
       try {
         const reply = await postChat(payload, controller.signal);
+        updateMessage(id, userMsg.id, { pending: false });
         addMessage(id, {
           id: newId(),
           role: "assistant",
@@ -1899,7 +1905,20 @@ pnpm test src/components/MessageBubble.test.tsx
 ```bash
 cd frontend
 pnpm add react-markdown remark-gfm react-syntax-highlighter
-pnpm add -D @types/react-syntax-highlighter
+pnpm add -D @types/react-syntax-highlighter @tailwindcss/typography
+```
+
+- [ ] **Step 3.5: 在 `frontend/tailwind.config.js` 中注册 typography 插件**
+
+> MessageBubble 用了 `prose prose-sm dark:prose-invert` 类,没有这个插件就只会编译成空类。
+
+```js
+import typography from "@tailwindcss/typography";
+// ...existing imports
+export default {
+  // ...existing config
+  plugins: [animate, typography],
+};
 ```
 
 - [ ] **Step 4: 实现 `frontend/src/components/MessageBubble.tsx`**
