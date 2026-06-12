@@ -28,3 +28,20 @@ def test_chat_weather() -> None:
     body = response.json()
     assert "reply" in body
     assert "San Francisco" in body["reply"]
+
+
+def test_chat_empty_messages_returns_400() -> None:
+    """空 messages 列表应返回 400 而非 422。"""
+    client = TestClient(app)
+    response = client.post("/api/chat", json={"messages": []})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "messages must not be empty"
+
+
+def test_cors_allows_any_origin() -> None:
+    """开发期 CORS 应对任意 Origin 放行。"""
+    client = TestClient(app)
+    response = client.get(
+        "/health", headers={"Origin": "http://localhost:5173"}
+    )
+    assert response.headers.get("access-control-allow-origin") == "*"
