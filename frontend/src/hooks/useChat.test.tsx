@@ -86,4 +86,26 @@ describe("useChat.send", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.current.context.conversations).toHaveLength(0);
   });
+
+  it("aborts the prior in-flight request when a new send starts", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        () => new Promise<Response>(() => {}),
+      );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+
+    act(() => {
+      void result.current.send("a");
+    });
+    await waitFor(() => expect(result.current.isSending).toBe(true));
+    const firstSignal = fetchSpy.mock.calls[0]?.[1]?.signal as AbortSignal;
+
+    act(() => {
+      void result.current.send("b");
+    });
+
+    expect(firstSignal.aborted).toBe(true);
+  });
 });
