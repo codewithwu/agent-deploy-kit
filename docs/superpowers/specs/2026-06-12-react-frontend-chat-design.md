@@ -128,6 +128,13 @@ interface ChatContextValue {
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
   clearCurrent: () => void;         // "清空消息"按钮
+  addMessage: (id: string, message: ChatMessage) => void;
+  updateMessage: (
+    id: string,
+    messageId: string,
+    patch: Partial<ChatMessage>,
+  ) => void;
+  renameIfFirstUserMessage: (id: string, content: string) => void;
 }
 ```
 
