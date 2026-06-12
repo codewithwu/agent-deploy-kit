@@ -143,11 +143,17 @@ localStorage key：`adk:conversations:v1`，带 `v1` 后缀方便未来不兼容
 1. trim + 长度判空,空则直接 return
 2. 若 currentId === null → createConversation() 取得 id
 3. 构造 userMsg { role:'user', content:text, pending:true }
-4. context.addMessage(currentId, userMsg)
-5. 构造请求载荷: current.messages 过滤 pending/error 后追加 userMsg(并把 userMsg.pending 改 false)
+4. context.addMessage(currentId, userMsg)        // UI 状态:气泡显示为"发送中"
+5. 构造 API 载荷: 从 current.messages 过滤掉所有 pending 与 error,
+                  映射为 { role, content },再追加 { role:'user', content:text }
+   (本地 userMsg 仍保留 pending=true;载荷里它是普通已发消息)
 6. fetch(POST `${VITE_API_BASE}/api/chat`, { body: { messages }, signal })
-   ├─ 成功: addMessage(assistant 回复);若是首条用户消息 → 自动重命名 title
-   └─ 失败: 把 userMsg 标记 error:true;toast.error(...)
+   ├─ 成功:
+   │  - addMessage({ role:'assistant', content:reply })
+   │  - 若是该会话首条用户消息 → 自动重命名 title 为前 30 字
+   └─ 失败:
+      - 把 userMsg 的 pending 改为 false、error 改为 true(气泡变红+重试)
+      - toast.error(按 status 给出文案)
 7. scroll to bottom
 ```
 
