@@ -41,7 +41,5 @@ def test_chat_empty_messages_returns_400() -> None:
 def test_cors_allows_any_origin() -> None:
     """开发期 CORS 应对任意 Origin 放行。"""
     client = TestClient(app)
-    response = client.get(
-        "/health", headers={"Origin": "http://localhost:5173"}
-    )
+    response = client.get("/health", headers={"Origin": "http://localhost:5173"})
     assert response.headers.get("access-control-allow-origin") == "*"
