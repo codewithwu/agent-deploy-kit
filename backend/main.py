@@ -46,5 +46,5 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if not messages:
         raise HTTPException(status_code=500, detail="agent returned no messages")
 
-    reply = getattr(messages[-1], "content", "") or ""
+    reply = getattr(messages[-1], "content", "")
     return ChatResponse(reply=reply)
