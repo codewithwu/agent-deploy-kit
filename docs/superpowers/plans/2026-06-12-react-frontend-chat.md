@@ -598,11 +598,15 @@ pnpm add -D vitest@1 jsdom @testing-library/react @testing-library/jest-dom @tes
 ```ts
 /// <reference types="vitest" />
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  plugins: [react()],
+  // 不挂 @vitejs/plugin-react：其 React Refresh wrapper 在 vitest 1.x 下会
+  // 抛 "can't detect preamble"。测试环境不需要 HMR，JSX 由 Vite 内置的
+  // esbuild jsx=automatic 处理（与生产构建路径一致）。
+  esbuild: {
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -617,6 +621,8 @@ export default defineConfig({
 });
 ```
 
+> **注**：`@vitest/coverage-v8` 必须与 `vitest` 主版本对齐。我们用 vitest@1,所以装 `@vitest/coverage-v8@1`(pnpm 默认会拉最新 v4,与 vitest@1 不兼容)。
+
 - [ ] **Step 3: 创建 `frontend/src/test/setup.ts`**
 
 ```ts
@@ -629,9 +635,9 @@ afterEach(() => {
 });
 ```
 
-- [ ] **Step 4: 创建 `frontend/src/test/sanity.test.ts`**
+- [ ] **Step 4: 创建 `frontend/src/test/sanity.test.tsx`**
 
-```ts
+```tsx
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -646,6 +652,8 @@ describe("sanity", () => {
   });
 });
 ```
+
+> **注**：含 JSX 的测试文件必须用 `.test.tsx` 后缀,Vite/esbuild 不会对 `.ts` 文件做 JSX 转换。后续所有组件测试同理。
 
 - [ ] **Step 5: 跑测试**
 
