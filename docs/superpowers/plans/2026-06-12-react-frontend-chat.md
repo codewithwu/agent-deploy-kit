@@ -63,6 +63,17 @@ cat > package.json <<'JSON'
 JSON
 ```
 
+- [ ] **Step 1.5: 创建 `frontend/pnpm-workspace.yaml`（pnpm 11+ 要求）**
+
+pnpm 10/11 默认拒绝运行包后安装脚本（安全策略）。esbuild 的 `postinstall` 会被静默阻止，导致 `pnpm dev` 报 "Could not detect the platform binary"。在 `frontend/pnpm-workspace.yaml` 中显式允许 esbuild：
+
+```yaml
+allowBuilds:
+  esbuild: true
+```
+
+后续 Task 引入新的有 postinstall 的依赖（sharp、@swc/core 等）时，按需追加。
+
 - [ ] **Step 2: 安装运行时依赖与开发依赖**
 
 ```bash
