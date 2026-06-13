@@ -11,6 +11,8 @@ export interface ChatMessage {
   pending?: boolean;
   /** 请求失败标记,支持重试 */
   error?: boolean;
+  /** 流式 step 名称,如 "model" / "tools";非流式消息省略 */
+  step?: string;
 }
 
 export interface Conversation {
