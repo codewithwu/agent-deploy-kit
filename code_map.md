@@ -184,7 +184,7 @@ agent-deploy-kit/
 | `frontend/src/context/ChatContext.tsx` | 全局聊天状态 Context | 增/改跨组件状态 |
 | `frontend/src/hooks/useChat.ts` | 发送消息、AbortSignal 取消进行中请求 | 调整发送/取消语义 |
 | `frontend/src/hooks/useConversations.ts` | 会话列表状态 | 调整会话持久化与切换 |
-| `frontend/src/lib/api.ts` | `postChat(messages, signal)`、`ChatApiError`；读 `VITE_API_BASE` | 后端接口契约变更 |
+| `frontend/src/lib/api.ts` | `streamChat(messages, signal)`(SSE 异步生成器,逐 yield `step`/`done`/`error`)、`ChatApiError`;读 `VITE_API_BASE` | 后端接口契约变更 |
 | `frontend/src/lib/storage.ts` | 本地存储封装 | 调整持久化方案 |
 | `frontend/src/lib/utils.ts` | `cn` 等通用工具 | 新增前端工具 |
 | `frontend/src/test/setup.ts` / `sanity.test.tsx` | Vitest 全局 setup 与冒烟测试 | 调整测试基础设施 |
