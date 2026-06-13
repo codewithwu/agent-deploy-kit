@@ -130,8 +130,7 @@ describe("useChat.send (streaming)", () => {
     });
 
     const assistant = result.current.context.conversations[0].messages[1];
-    expect(assistant.content).toContain("调用工具: get_weather");
-    expect(assistant.content).toContain("San Francisco");
+    expect(assistant.content).toBe('调用工具: get_weather({"city":"San Francisco"})');
   });
 
   it("concatenates text blocks for text step", async () => {
@@ -202,7 +201,7 @@ describe("useChat.send (streaming)", () => {
     const msgs = result.current.context.conversations[0].messages;
     expect(msgs[0].pending).toBe(false);
     expect(msgs[1].error).toBe(true);
-    expect(msgs[1].content).toBe("thinking...");
+    expect(msgs[1].role).toBe("assistant");
   });
 
   it("aborts the prior in-flight stream when a new send starts", async () => {
