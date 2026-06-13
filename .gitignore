@@ -181,7 +181,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-jupyter/
 uv.md
 plan/
 
