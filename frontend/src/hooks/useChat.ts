@@ -55,7 +55,7 @@ export interface UseChatValue {
 
 export function useChat(): UseChatValue {
   const ctx = useChatContext();
-  const { conversations, currentId, addMessage, updateMessage, renameIfFirstUserMessage } =
+  const { currentId, addMessage, updateMessage, renameIfFirstUserMessage } =
     ctx;
   const [isSending, setIsSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -87,12 +87,9 @@ export function useChat(): UseChatValue {
       };
       addMessage(id, userMsg);
 
-      // 3. 构造 API 载荷(从最新 state 取)
-      const conv = conversations.find((c) => c.id === id);
-      const history = (conv?.messages ?? [])
-        .filter((m) => !m.pending && !m.error)
-        .map((m) => ({ role: m.role, content: m.content }));
-      const payload = [...history, { role: "user", content: trimmed }];
+      // 3. 构造 API 载荷。智能体本身无状态、无记忆,本地上下文仅用于 UI 展示,
+      //    发往后端的载荷每轮只含当前 user 消息,避免历史干扰 LLM 决策。
+      const payload = [{ role: "user", content: trimmed }];
 
       // 4. 发送流
       const controller = new AbortController();
@@ -139,7 +136,6 @@ export function useChat(): UseChatValue {
       }
     },
     [
-      conversations,
       currentId,
       addMessage,
       updateMessage,
