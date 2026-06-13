@@ -19,7 +19,7 @@ const assistantMsg: ChatMessage = {
 
 const errorMsg: ChatMessage = {
   id: "e1",
-  role: "user",
+  role: "assistant",
   content: "boom",
   createdAt: 1,
   error: true,
@@ -31,6 +31,42 @@ const pendingMsg: ChatMessage = {
   content: "...",
   createdAt: 1,
   pending: true,
+};
+
+const runningAssistantMsg: ChatMessage = {
+  id: "r1",
+  role: "assistant",
+  content: "调用工具: get_weather({})",
+  createdAt: 1,
+  pending: true,
+  steps: [
+    { name: "model", blocks: [{ type: "tool_call", name: "get_weather", args: {} }] },
+    { name: "tools", blocks: [{ type: "text", text: "sunny" }] },
+    { name: "model", blocks: [{ type: "text", text: "正在准备最终回复" }] },
+  ],
+};
+
+const doneAssistantMsg: ChatMessage = {
+  id: "d1",
+  role: "assistant",
+  content: "It's **sunny** today.",
+  createdAt: 1,
+  pending: false,
+  steps: [
+    { name: "model", blocks: [{ type: "tool_call", name: "get_weather", args: {} }] },
+    { name: "tools", blocks: [{ type: "text", text: "sunny" }] },
+    { name: "model", blocks: [{ type: "text", text: "It's sunny today." }] },
+  ],
+};
+
+const errorAssistantMsg: ChatMessage = {
+  id: "ea1",
+  role: "assistant",
+  content: "partial answer",
+  createdAt: 1,
+  error: true,
+  pending: false,
+  steps: [{ name: "model", blocks: [{ type: "text", text: "partial answer" }] }],
 };
 
 describe("MessageBubble", () => {
@@ -61,5 +97,27 @@ describe("MessageBubble", () => {
   it("shows pending indicator for pending user message", () => {
     render(<MessageBubble message={pendingMsg} />);
     expect(screen.getByText(/发送中/i)).toBeInTheDocument();
+  });
+
+  it("renders task list when assistant message has steps and is pending", () => {
+    const { container } = render(<MessageBubble message={runningAssistantMsg} />);
+    expect(container.querySelector('[data-testid="task-list"]')).not.toBeNull();
+    expect(screen.getByText("正在准备调用 get_weather…")).toBeInTheDocument();
+    expect(screen.getByText("正在生成回复…")).toBeInTheDocument();
+    expect(screen.getByText(/智能体 正在回复/)).toBeInTheDocument();
+  });
+
+  it("renders final answer markdown when assistant message is not pending", () => {
+    render(<MessageBubble message={doneAssistantMsg} />);
+    const strong = screen.getByText("sunny");
+    expect(strong.tagName).toBe("STRONG");
+    expect(screen.queryByTestId("task-list")).toBeNull();
+  });
+
+  it("renders error state with retry button when assistant message has error flag", () => {
+    const onRetry = vi.fn();
+    render(<MessageBubble message={errorAssistantMsg} onRetry={onRetry} />);
+    expect(screen.getByRole("button", { name: /重试/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("task-list")).toBeNull();
   });
 });
