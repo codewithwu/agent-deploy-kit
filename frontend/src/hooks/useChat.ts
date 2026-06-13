@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatApiError, postChat } from "@/lib/api";
+import { ChatApiError, streamChat } from "@/lib/api";
 import { useChatContext } from "@/context/ChatContext";
 import type { ChatMessage } from "@/types";
 
@@ -8,6 +8,35 @@ function newId(): string {
     return crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// 把一个 step 的 blocks 渲染成展示给用户的纯文本:
+//  - text 块按顺序拼接
+//  - 没有任何 text 块时,改用 tool_call 的占位文字,便于调试
+function renderStepContent(blocks: Array<Record<string, unknown>>): string {
+  const textParts = blocks
+    .filter((b): b is { type: string; text: string } => b.type === "text")
+    .map((b) => b.text);
+  if (textParts.length > 0) return textParts.join("");
+  return blocks
+    .filter((b) => b.type === "tool_call")
+    .map((b) => {
+      const name = String(b.name ?? "");
+      const args = b.args;
+      return `调用工具: ${name}(${JSON.stringify(args)})`;
+    })
+    .join("\n");
+}
+
+// 把任意异常翻译成展示给用户的 toast 文案
+function toastMessage(err: unknown, fallbackDetail: string): string {
+  if (err instanceof ChatApiError) {
+    if (err.status === 400) return err.message || "消息不能为空";
+    if (err.status >= 500) return "智能体暂时不可用";
+    return err.message || fallbackDetail;
+  }
+  if (err instanceof Error) return err.message || fallbackDetail;
+  return fallbackDetail;
 }
 
 export interface UseChatValue {
@@ -58,42 +87,51 @@ export function useChat(): UseChatValue {
         .map((m) => ({ role: m.role, content: m.content }));
       const payload = [...history, { role: "user", content: trimmed }];
 
-      // 4. 发送
+      // 4. 发送流
       const controller = new AbortController();
       abortRef.current = controller;
       setIsSending(true);
+      let lastAssistantId: string | null = null;
       try {
-        const reply = await postChat(payload, controller.signal);
-        updateMessage(id, userMsg.id, { pending: false });
-        addMessage(id, {
-          id: newId(),
-          role: "assistant",
-          content: reply,
-          createdAt: Date.now(),
-        });
-        renameIfFirstUserMessage(id, trimmed);
+        for await (const ev of streamChat(payload, controller.signal)) {
+          if (ev.kind === "step") {
+            const content = renderStepContent(ev.blocks);
+            const assistantId = newId();
+            lastAssistantId = assistantId;
+            addMessage(id, {
+              id: assistantId,
+              role: "assistant",
+              content,
+              createdAt: Date.now(),
+              pending: true,
+              step: ev.step,
+            });
+          } else if (ev.kind === "done") {
+            updateMessage(id, userMsg.id, { pending: false });
+            renameIfFirstUserMessage(id, trimmed);
+          } else if (ev.kind === "error") {
+            if (lastAssistantId) {
+              updateMessage(id, lastAssistantId, { error: true });
+            }
+            updateMessage(id, userMsg.id, { pending: false });
+            const toast = (
+              globalThis as { toast?: { error: (msg: string) => void } }
+            ).toast;
+            toast?.error(ev.detail || "智能体暂时不可用");
+          }
+        }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        const status = err instanceof ChatApiError ? err.status : 0;
-        const detail =
-          err instanceof ChatApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "请求失败";
         updateMessage(id, userMsg.id, { pending: false, error: true });
+        if (lastAssistantId) {
+          updateMessage(id, lastAssistantId, { error: true });
+        }
         const toast = (
           globalThis as { toast?: { error: (msg: string) => void } }
         ).toast;
-        const text =
-          status === 400
-            ? detail || "消息不能为空"
-            : status >= 500
-              ? "智能体暂时不可用"
-              : detail || "请求失败";
-        toast?.error(text);
+        toast?.error(toastMessage(err, "请求失败"));
       } finally {
         setIsSending(false);
         abortRef.current = null;
