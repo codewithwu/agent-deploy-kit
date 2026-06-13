@@ -95,6 +95,9 @@ import type { AssistantStep, ChatMessage } from "@/types";
 主循环：
 
 ```ts
+// useChat 函数体内,send 之外,与其他 ref 同级:
+const assistantRef = useRef<{ steps: AssistantStep[]; content: string } | null>(null);
+
 const send = useCallback(async (text: string) => {
   const trimmed = text.trim();
   if (!trimmed) return;
@@ -119,9 +122,8 @@ const send = useCallback(async (text: string) => {
   abortRef.current = controller;
   setIsSending(true);
   let assistantId: string | null = null;
-  // 流循环内不能依赖 useCallback 闭包里的 ctx.conversations(可能读到旧值),
-  // 用 ref 跟踪当前 assistant 消息的 steps,避免后续 step 追加时丢上下文。
-  const assistantRef = useRef<{ steps: AssistantStep[]; content: string } | null>(null);
+  // 重置 ref,避免上一轮 send 残留影响本轮
+  assistantRef.current = null;
   try {
     for await (const ev of streamChat(payload, controller.signal)) {
       if (ev.kind === "step") {
