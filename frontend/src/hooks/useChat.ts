@@ -10,6 +10,13 @@ function newId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function toastError(msg: string): void {
+  const toast = (
+    globalThis as { toast?: { error: (m: string) => void } }
+  ).toast;
+  toast?.error(msg);
+}
+
 // 把一个 step 的 blocks 渲染成展示给用户的纯文本:
 //  - text 块按顺序拼接
 //  - 没有任何 text 块时,改用 tool_call 的占位文字,便于调试
@@ -114,10 +121,7 @@ export function useChat(): UseChatValue {
               updateMessage(id, lastAssistantId, { error: true });
             }
             updateMessage(id, userMsg.id, { pending: false });
-            const toast = (
-              globalThis as { toast?: { error: (msg: string) => void } }
-            ).toast;
-            toast?.error(ev.detail || "智能体暂时不可用");
+            toastError(ev.detail || "智能体暂时不可用");
           }
         }
       } catch (err) {
@@ -128,10 +132,7 @@ export function useChat(): UseChatValue {
         if (lastAssistantId) {
           updateMessage(id, lastAssistantId, { error: true });
         }
-        const toast = (
-          globalThis as { toast?: { error: (msg: string) => void } }
-        ).toast;
-        toast?.error(toastMessage(err, "请求失败"));
+        toastError(toastMessage(err, "请求失败"));
       } finally {
         setIsSending(false);
         abortRef.current = null;
