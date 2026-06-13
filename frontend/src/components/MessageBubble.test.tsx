@@ -19,7 +19,7 @@ const assistantMsg: ChatMessage = {
 
 const errorMsg: ChatMessage = {
   id: "e1",
-  role: "assistant",
+  role: "user",
   content: "boom",
   createdAt: 1,
   error: true,
