@@ -110,27 +110,38 @@ const send = useCallback(async (text: string) => {
   abortRef.current = controller;
   setIsSending(true);
   let assistantId: string | null = null;
+  // 流循环内不能依赖 useCallback 闭包里的 ctx.conversations(可能读到旧值),
+  // 用 ref 跟踪当前 assistant 消息的 steps,避免后续 step 追加时丢上下文。
+  const assistantRef = useRef<{ steps: AssistantStep[]; content: string } | null>(null);
   try {
     for await (const ev of streamChat(payload, controller.signal)) {
       if (ev.kind === "step") {
         if (assistantId === null) {
           assistantId = newId();
+          const initContent = extractText(ev.blocks) || toolSummary(ev.blocks);
+          assistantRef.current = {
+            steps: [{ name: ev.step, blocks: ev.blocks }],
+            content: initContent,
+          };
           addMessage(id, {
             id: assistantId,
             role: "assistant",
-            content: extractText(ev.blocks) || toolSummary(ev.blocks),
+            content: initContent,
             createdAt: Date.now(),
             pending: true,
-            steps: [{ name: ev.step, blocks: ev.blocks }],
+            steps: assistantRef.current.steps,
           });
         } else {
-          const current = ctx.conversations
-            .find((c) => c.id === id)
-            ?.messages.find((m) => m.id === assistantId);
-          const newContent = extractText(ev.blocks) || current?.content || "";
+          const newContent =
+            extractText(ev.blocks) || assistantRef.current?.content || "";
+          const newSteps = [
+            ...(assistantRef.current?.steps ?? []),
+            { name: ev.step, blocks: ev.blocks },
+          ];
+          assistantRef.current = { steps: newSteps, content: newContent };
           updateMessage(id, assistantId, {
             content: newContent,
-            steps: [...(current?.steps ?? []), { name: ev.step, blocks: ev.blocks }],
+            steps: newSteps,
           });
         }
       } else if (ev.kind === "done") {
