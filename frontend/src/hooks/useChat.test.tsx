@@ -235,4 +235,63 @@ describe("useChat.send (streaming)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.current.context.conversations).toHaveLength(0);
   });
+
+  it("sends only the current user message, no history (stateless agent)", async () => {
+    // 第一轮:返回完整三步 SSE,确认前端"看到"了上海天气(仅用于 UI 展示)
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            event: "step",
+            data: {
+              step: "model",
+              blocks: [{ type: "tool_call", name: "get_weather", args: { city: "上海" } }],
+            },
+          },
+          {
+            event: "step",
+            data: {
+              step: "tools",
+              blocks: [{ type: "text", text: "It's always sunny in 上海!" }],
+            },
+          },
+          { event: "done", data: {} },
+        ]),
+      )
+      // 第二轮:用户问北京,载荷里不应再含"上海"
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            event: "step",
+            data: {
+              step: "model",
+              blocks: [{ type: "tool_call", name: "get_weather", args: { city: "北京" } }],
+            },
+          },
+          { event: "done", data: {} },
+        ]),
+      );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+    await act(async () => {
+      await result.current.send("上海的天气如何");
+    });
+    await act(async () => {
+      await result.current.send("北京的天气如何");
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const firstBody = JSON.parse(fetchSpy.mock.calls[0]?.[1]?.body as string);
+    expect(firstBody.messages).toEqual([
+      { role: "user", content: "上海的天气如何" },
+    ]);
+
+    const secondBody = JSON.parse(fetchSpy.mock.calls[1]?.[1]?.body as string);
+    // 关键断言:第二轮载荷里只有新的 user 消息,不能含上一轮的 user / assistant 历史
+    expect(secondBody.messages).toEqual([
+      { role: "user", content: "北京的天气如何" },
+    ]);
+  });
 });
