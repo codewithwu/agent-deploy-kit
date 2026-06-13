@@ -1,75 +1,173 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { postChat, ChatApiError } from "./api";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ChatApiError, streamChat } from "./api";
 
-const ORIGINAL_FETCH = globalThis.fetch;
+// 把 SSE 帧列表编码成一段完整文本(供一次性入队)
+function sseText(
+  frames: Array<{ event?: string; data: object; id?: string }>,
+): string {
+  return frames
+    .map((f) => {
+      const parts: string[] = [];
+      if (f.id) parts.push(`id: ${f.id}`);
+      if (f.event) parts.push(`event: ${f.event}`);
+      parts.push(`data: ${JSON.stringify(f.data)}`);
+      return parts.join("\n") + "\n\n";
+    })
+    .join("");
+}
+
+// 构造一个一次性格式化的 SSE Response
+function sseResponse(frames: Array<{ event?: string; data: object }>): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(sseText(frames)));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+// 构造一个可手动分块入队的 SSE Response,用于测试"跨 chunk 切帧"
+function chunkedSseResponse(): {
+  response: Response;
+  push: (text: string) => void;
+  close: () => void;
+} {
+  const encoder = new TextEncoder();
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controllerRef = c;
+    },
+  });
+  return {
+    response: new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    }),
+    push: (text: string) => controllerRef?.enqueue(encoder.encode(text)),
+    close: () => controllerRef?.close(),
+  };
+}
 
 beforeEach(() => {
-  globalThis.fetch = vi.fn();
-});
-
-afterEach(() => {
-  globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
 });
 
-describe("postChat", () => {
-  it("returns reply on 200", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ reply: "hi there" }), { status: 200 }),
+describe("streamChat", () => {
+  it("yields step and done events from a complete SSE stream", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        {
+          event: "step",
+          data: {
+            step: "model",
+            blocks: [{ type: "tool_call", name: "get_weather", args: { city: "SF" } }],
+          },
+        },
+        { event: "done", data: {} },
+      ]),
     );
-    const reply = await postChat([{ role: "user", content: "hi" }]);
-    expect(reply).toBe("hi there");
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/chat",
-      expect.objectContaining({ method: "POST" }),
-    );
+
+    const events: unknown[] = [];
+    for await (const ev of streamChat([{ role: "user", content: "hi" }])) {
+      events.push(ev);
+    }
+    expect(events).toEqual([
+      {
+        kind: "step",
+        step: "model",
+        blocks: [
+          { type: "tool_call", name: "get_weather", args: { city: "SF" } },
+        ],
+      },
+      { kind: "done" },
+    ]);
   });
 
-  it("uses VITE_API_BASE when set", async () => {
-    vi.stubEnv("VITE_API_BASE", "https://api.example.com");
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ reply: "ok" }), { status: 200 }),
-    );
-    await postChat([{ role: "user", content: "x" }]);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      "https://api.example.com/api/chat",
-      expect.any(Object),
-    );
-    vi.unstubAllEnvs();
-  });
-
-  it("throws ChatApiError on non-2xx with detail from body", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ detail: "messages must not be empty" }), {
+  it("throws ChatApiError on non-2xx with parsed detail", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "empty messages" }), {
         status: 400,
+        headers: { "Content-Type": "application/json" },
       }),
     );
-    await expect(
-      postChat([{ role: "user", content: "" }]),
-    ).rejects.toMatchObject({
-      status: 400,
-      message: "messages must not be empty",
-    });
+
+    await expect(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of streamChat([{ role: "user", content: "hi" }])) {
+        // 不应进入循环
+      }
+    }).rejects.toThrow(ChatApiError);
+
+    try {
+      for await (const _ of streamChat([{ role: "user", content: "hi" }])) {
+        // no-op
+      }
+    } catch (err) {
+      expect(err).toBeInstanceOf(ChatApiError);
+      expect((err as ChatApiError).status).toBe(400);
+      expect((err as ChatApiError).message).toBe("empty messages");
+    }
   });
 
-  it("throws ChatApiError on non-2xx without JSON body", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response("plain text error", { status: 500 }),
+  it("yields error event for event: error frame", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([{ event: "error", data: { detail: "rate limit" } }]),
     );
-    await expect(
-      postChat([{ role: "user", content: "x" }]),
-    ).rejects.toBeInstanceOf(ChatApiError);
+
+    const events: unknown[] = [];
+    for await (const ev of streamChat([{ role: "user", content: "hi" }])) {
+      events.push(ev);
+    }
+    expect(events).toEqual([{ kind: "error", detail: "rate limit" }]);
   });
 
-  it("passes AbortSignal through to fetch", async () => {
+  it("handles SSE frames split across reader chunks", async () => {
+    const { response, push, close } = chunkedSseResponse();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+    const collectPromise = (async () => {
+      const events: unknown[] = [];
+      for await (const ev of streamChat([{ role: "user", content: "hi" }])) {
+        events.push(ev);
+      }
+      return events;
+    })();
+
+    // 让 async generator 进入 reader.read 等待
+    await new Promise((r) => setTimeout(r, 0));
+    push("event: step\ndata: {\"step\":\"m");
+    await new Promise((r) => setTimeout(r, 0));
+    push("odel\",\"blocks\":[]}\n\nevent: done\ndata: {}\n\n");
+    close();
+
+    const events = await collectPromise;
+    expect(events).toEqual([
+      { kind: "step", step: "model", blocks: [] },
+      { kind: "done" },
+    ]);
+  });
+
+  it("passes AbortSignal to fetch", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(sseResponse([{ event: "done", data: {} }]));
+
     const controller = new AbortController();
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ reply: "ok" }), { status: 200 }),
-    );
-    await postChat([{ role: "user", content: "x" }], controller.signal);
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ signal: controller.signal }),
-    );
+    for await (const _ of streamChat(
+      [{ role: "user", content: "hi" }],
+      controller.signal,
+    )) {
+      // consume to completion
+    }
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.signal).toBe(controller.signal);
   });
 });
