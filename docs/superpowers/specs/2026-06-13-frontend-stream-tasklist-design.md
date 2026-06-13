@@ -85,6 +85,15 @@ export function describeStep(step: AssistantStep): string;
 
 ### `frontend/src/hooks/useChat.ts`（重写 send 主循环）
 
+新增 import（其余 imports 不变）：
+
+```ts
+import { extractText, toolSummary } from "@/lib/stepContent";
+import type { AssistantStep, ChatMessage } from "@/types";
+```
+
+主循环：
+
 ```ts
 const send = useCallback(async (text: string) => {
   const trimmed = text.trim();
