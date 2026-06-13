@@ -64,7 +64,7 @@
 
 - **异步生成器 `event_generator(request: ChatRequest) -> AsyncIterator[bytes]`**
   1. `try` 块：遍历 `weather_agent.stream({"messages": [m.model_dump() for m in request.messages]}, stream_mode='updates', version='v2')`：
-     - 仅处理 `chunk["type"] == "updates"]`。
+     - 仅处理 `chunk["type"] == "updates"` 的 chunk（其他类型如 `messages`、`custom` 忽略）。
      - 对每个 `(step, data)`：取 `data["messages"][-1].content_blocks`，`yield _sse("step", {"step": step, "blocks": blocks}, id=uuid4().hex).encode("utf-8")`。
   2. 流正常结束 → `yield _sse("done", {}).encode("utf-8")`。
   3. `except Exception as exc`：`logging.exception(...)` 记录，`yield _sse("error", {"detail": str(exc)}).encode("utf-8")`，**不再 raise**。
@@ -103,9 +103,9 @@
   - `client.stream("POST", "/api/chat/stream", json={"messages":[{"role":"user","content":"What's the weather in San Francisco?"}]}) as r:` 遍历 `r.iter_lines(decode_unicode=True)`。
   - 拼成字符串过 `_parse_sse_events`。
   - 断言：
-    - 至少 1 条 `event == "step"`，第一条 `data["blocks"]` 至少含 1 个 `{"type": in {"tool_call","text"}}` 元素。
+    - 至少 1 条 `event == "step"`，且第一条 `step` 事件的 `data["blocks"]` 至少含 1 个 `type` 在 `{"tool_call","text"}` 中的元素。
     - 事件流中**最后**一条 `event == "done"`。
-    - 把所有 `step` 事件的 `blocks` 拍平后 `json.dumps` 一次，断言 `"San Francisco"` 出现在其中（与 `test_chat_weather` 一致地验证业务正确性）。
+    - 把所有 `step` 事件的 `blocks` 拍平成单层 list（每个元素的 `type` 字段采集出来），`json.dumps` 一次，断言 `"San Francisco"` 出现在该字符串中（与 `test_chat_weather` 一致地验证业务正确性）。
 
 - **用例 3 `test_stream_empty_messages_returns_400`**
   - `POST /api/chat/stream` 带 `{"messages": []}` → 断言 400 + `detail == "messages must not be empty"`（与现有 `test_chat_empty_messages_returns_400` 对称）。
