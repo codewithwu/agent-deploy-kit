@@ -97,22 +97,18 @@ describe("streamChat", () => {
       }),
     );
 
-    await expect(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _ of streamChat([{ role: "user", content: "hi" }])) {
-        // 不应进入循环
-      }
-    }).rejects.toThrow(ChatApiError);
+    const rejection = await streamChat([{ role: "user", content: "hi" }])
+      .next()
+      .then(
+        () => {
+          throw new Error("expected streamChat to throw");
+        },
+        (e: unknown) => e,
+      );
 
-    try {
-      for await (const _ of streamChat([{ role: "user", content: "hi" }])) {
-        // no-op
-      }
-    } catch (err) {
-      expect(err).toBeInstanceOf(ChatApiError);
-      expect((err as ChatApiError).status).toBe(400);
-      expect((err as ChatApiError).message).toBe("empty messages");
-    }
+    expect(rejection).toBeInstanceOf(ChatApiError);
+    expect((rejection as ChatApiError).status).toBe(400);
+    expect((rejection as ChatApiError).message).toBe("empty messages");
   });
 
   it("yields error event for event: error frame", async () => {
