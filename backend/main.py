@@ -1,9 +1,6 @@
 """Weather Agent FastAPI 后端."""
 
-import json
 import logging
-from collections.abc import AsyncIterator
-from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
