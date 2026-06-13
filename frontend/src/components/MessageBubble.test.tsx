@@ -33,6 +33,14 @@ const pendingMsg: ChatMessage = {
   pending: true,
 };
 
+const thinkingAssistantMsg: ChatMessage = {
+  id: "t1",
+  role: "assistant",
+  content: "",
+  createdAt: 1,
+  pending: true,
+};
+
 const runningAssistantMsg: ChatMessage = {
   id: "r1",
   role: "assistant",
@@ -94,9 +102,18 @@ describe("MessageBubble", () => {
     expect(screen.queryByRole("button", { name: /重试/i })).toBeNull();
   });
 
-  it("shows pending indicator for pending user message", () => {
+  it("does not render a sending indicator for pending user message", () => {
     render(<MessageBubble message={pendingMsg} />);
-    expect(screen.getByText(/发送中/i)).toBeInTheDocument();
+    expect(screen.queryByText(/发送中/i)).toBeNull();
+    // user 内容本身仍要展示
+    expect(screen.getByText("...")).toBeInTheDocument();
+  });
+
+  it("renders thinking indicator for pending assistant message without steps", () => {
+    const { container } = render(<MessageBubble message={thinkingAssistantMsg} />);
+    expect(container.querySelector('[data-testid="thinking-indicator"]')).not.toBeNull();
+    expect(screen.queryByTestId("task-list")).toBeNull();
+    expect(screen.getByText(/智能体 正在回复/)).toBeInTheDocument();
   });
 
   it("renders task list when assistant message has steps and is pending", () => {

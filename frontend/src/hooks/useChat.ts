@@ -38,8 +38,13 @@ export interface UseChatValue {
 
 export function useChat(): UseChatValue {
   const ctx = useChatContext();
-  const { currentId, addMessage, updateMessage, renameIfFirstUserMessage } =
-    ctx;
+  const {
+    currentId,
+    addMessage,
+    updateMessage,
+    removeMessage,
+    renameIfFirstUserMessage,
+  } = ctx;
   const [isSending, setIsSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // 流循环内不能依赖 useCallback 闭包里的 ctx.conversations(可能读到旧值),
@@ -74,6 +79,17 @@ export function useChat(): UseChatValue {
       };
       addMessage(id, userMsg);
 
+      // 2.5 立即添加 assistant 占位消息(无 steps),让用户立刻看到"智能体正在回复"反馈,
+      //      避免后端首个 step 事件到达前的空白等待。首个 step 事件到达时直接 update 它。
+      const placeholderAssistantId = newId();
+      addMessage(id, {
+        id: placeholderAssistantId,
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+        pending: true,
+      });
+
       // 3. 构造 API 载荷。智能体本身无状态、无记忆,本地上下文仅用于 UI 展示,
       //    发往后端的载荷每轮只含当前 user 消息,避免历史干扰 LLM 决策。
       const payload = [{ role: "user", content: trimmed }];
@@ -82,49 +98,39 @@ export function useChat(): UseChatValue {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsSending(true);
-      let assistantId: string | null = null;
+      const assistantId = placeholderAssistantId;
       // 重置 ref,避免上一轮 send 残留影响本轮
       assistantRef.current = null;
+      let firstStepHandled = false;
       try {
         for await (const ev of streamChat(payload, controller.signal)) {
           if (ev.kind === "step") {
-            if (assistantId === null) {
-              assistantId = newId();
-              const initContent = extractText(ev.blocks) || toolSummary(ev.blocks);
-              assistantRef.current = {
-                steps: [{ name: ev.step, blocks: ev.blocks }],
-                content: initContent,
-              };
-              addMessage(id, {
-                id: assistantId,
-                role: "assistant",
-                content: initContent,
-                createdAt: Date.now(),
-                pending: true,
-                steps: assistantRef.current.steps,
-              });
-            } else {
-              const newContent: string =
-                extractText(ev.blocks) || assistantRef.current?.content || "";
-              const newSteps: AssistantStep[] = [
-                ...(assistantRef.current?.steps ?? []),
-                { name: ev.step, blocks: ev.blocks },
-              ];
-              assistantRef.current = { steps: newSteps, content: newContent };
-              updateMessage(id, assistantId, {
-                content: newContent,
-                steps: newSteps,
-              });
-            }
+            const initContent = extractText(ev.blocks) || toolSummary(ev.blocks);
+            const newContent: string = firstStepHandled
+              ? extractText(ev.blocks) || assistantRef.current?.content || ""
+              : initContent;
+            const newSteps: AssistantStep[] = firstStepHandled
+              ? [
+                  ...(assistantRef.current?.steps ?? []),
+                  { name: ev.step, blocks: ev.blocks },
+                ]
+              : [{ name: ev.step, blocks: ev.blocks }];
+            assistantRef.current = { steps: newSteps, content: newContent };
+            updateMessage(id, assistantId, {
+              content: newContent,
+              steps: newSteps,
+            });
+            firstStepHandled = true;
           } else if (ev.kind === "done") {
-            if (assistantId) {
-              updateMessage(id, assistantId, { pending: false });
-            }
+            updateMessage(id, assistantId, { pending: false });
             updateMessage(id, userMsg.id, { pending: false });
             renameIfFirstUserMessage(id, trimmed);
           } else if (ev.kind === "error") {
-            if (assistantId) {
+            // 若首个 step 都没收到就失败,占位消息没意义,直接移除
+            if (firstStepHandled) {
               updateMessage(id, assistantId, { pending: false, error: true });
+            } else {
+              removeMessage(id, assistantId);
             }
             updateMessage(id, userMsg.id, { pending: false });
             toastError(ev.detail || "智能体暂时不可用");
@@ -135,8 +141,10 @@ export function useChat(): UseChatValue {
           return;
         }
         updateMessage(id, userMsg.id, { pending: false, error: true });
-        if (assistantId) {
+        if (firstStepHandled) {
           updateMessage(id, assistantId, { pending: false, error: true });
+        } else {
+          removeMessage(id, assistantId);
         }
         toastError(toastMessage(err, "请求失败"));
       } finally {
@@ -148,6 +156,7 @@ export function useChat(): UseChatValue {
       currentId,
       addMessage,
       updateMessage,
+      removeMessage,
       renameIfFirstUserMessage,
       ctx,
     ],

@@ -157,7 +157,10 @@ describe("useChat.send (streaming)", () => {
       await result.current.send("hi");
     });
 
-    const userMsg = result.current.context.conversations[0].messages[0];
+    const messages = result.current.context.conversations[0].messages;
+    expect(messages).toHaveLength(1);
+    const userMsg = messages[0];
+    expect(userMsg.role).toBe("user");
     expect(userMsg.error).toBe(true);
     expect(userMsg.pending).toBe(false);
   });
@@ -185,6 +188,23 @@ describe("useChat.send (streaming)", () => {
     expect(msgs[0].pending).toBe(false);
     expect(msgs[1].error).toBe(true);
     expect(msgs[1].role).toBe("assistant");
+  });
+
+  it("removes placeholder assistant message when error arrives before any step", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([{ event: "error", data: { detail: "rate limit" } }]),
+    );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const msgs = result.current.context.conversations[0].messages;
+    // 没有 step,占位 assistant 消息被直接移除,只剩 user 消息
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe("user");
+    expect(msgs[0].pending).toBe(false);
   });
 
   it("first step with text sets content immediately and keeps pending true", async () => {

@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -17,6 +17,25 @@ interface MessageBubbleProps {
 function safeUrl(url: string): string | null {
   if (/^(https?:|mailto:)/i.test(url)) return url;
   return null;
+}
+
+/** 思考中视图:assistant 消息已挂起但首个 step 尚未到达。 */
+function ThinkingView() {
+  return (
+    <div
+      className="flex items-start gap-2"
+      data-testid="thinking-indicator"
+    >
+      <div
+        className="mt-1 h-7 w-7 shrink-0 rounded-full bg-muted"
+        aria-hidden
+      />
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+        <span>智能体 正在回复…</span>
+      </div>
+    </div>
+  );
 }
 
 /** 任务列表视图:运行中的 assistant 消息。 */
@@ -164,9 +183,6 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           )}
         >
           <div className="break-words">{message.content}</div>
-          {message.pending && (
-            <div className="mt-1 text-xs text-muted-foreground">发送中…</div>
-          )}
           {message.error && (
             <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
               <span>发送失败</span>
@@ -183,6 +199,20 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
               )}
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant 思考中:首个 step 尚未到达,显示 loading 动效
+  if (message.pending && !message.steps) {
+    return (
+      <div
+        className="flex w-full justify-start"
+        data-testid={`message-${message.role}`}
+      >
+        <div className="max-w-[80%] text-sm">
+          <ThinkingView />
         </div>
       </div>
     );
