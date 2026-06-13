@@ -12,3 +12,7 @@ pnpm dev
 ```
 
 后端启动方式见仓库根的 `CLAUDE.md`。
+
+cd ..
+source .venv/bin/activate
+uvicorn backend.main:app --reload --port 8000
