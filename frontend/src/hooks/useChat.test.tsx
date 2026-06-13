@@ -45,38 +45,28 @@ beforeEach(() => {
 });
 
 describe("useChat.send (streaming)", () => {
-  it("streams 3 step events then done, producing 3 assistant messages with step labels", async () => {
+  it("aggregates 3 step events into 1 assistant message with steps.length === 3", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [
-              {
-                type: "tool_call",
-                name: "get_weather",
-                args: { city: "San Francisco" },
-              },
-            ],
+            blocks: [{ type: "tool_call", name: "get_weather", args: { city: "San Francisco" } }],
           },
         },
         {
           event: "step",
           data: {
             step: "tools",
-            blocks: [
-              { type: "text", text: "It's always sunny in San Francisco!" },
-            ],
+            blocks: [{ type: "text", text: "It's always sunny in San Francisco!" }],
           },
         },
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [
-              { type: "text", text: "It's always sunny in San Francisco!" },
-            ],
+            blocks: [{ type: "text", text: "It's always sunny in San Francisco!" }],
           },
         },
         { event: "done", data: {} },
@@ -89,35 +79,25 @@ describe("useChat.send (streaming)", () => {
     });
 
     const messages = result.current.context.conversations[0].messages;
-    expect(messages).toHaveLength(4);
+    expect(messages).toHaveLength(2);  // user + 1 assistant
     expect(messages[0].role).toBe("user");
-    expect(messages[0].content).toBe("What's the weather in San Francisco?");
     expect(messages[0].pending).toBe(false);
 
     expect(messages[1].role).toBe("assistant");
-    expect(messages[1].step).toBe("model");
-
-    expect(messages[2].role).toBe("assistant");
-    expect(messages[2].step).toBe("tools");
-
-    expect(messages[3].role).toBe("assistant");
-    expect(messages[3].step).toBe("model");
+    expect(messages[1].steps).toHaveLength(3);
+    expect(messages[1].steps?.[0].name).toBe("model");
+    expect(messages[1].steps?.[1].name).toBe("tools");
+    expect(messages[1].steps?.[2].name).toBe("model");
   });
 
-  it("renders tool_call step as 占位文字 in content", async () => {
+  it("first tool_call step stores summary in content, blocks in steps[0]", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [
-              {
-                type: "tool_call",
-                name: "get_weather",
-                args: { city: "San Francisco" },
-              },
-            ],
+            blocks: [{ type: "tool_call", name: "get_weather", args: { city: "San Francisco" } }],
           },
         },
         { event: "done", data: {} },
@@ -131,23 +111,26 @@ describe("useChat.send (streaming)", () => {
 
     const assistant = result.current.context.conversations[0].messages[1];
     expect(assistant.content).toBe('调用工具: get_weather({"city":"San Francisco"})');
+    expect(assistant.steps?.[0].blocks).toEqual([
+      { type: "tool_call", name: "get_weather", args: { city: "San Francisco" } },
+    ]);
   });
 
-  it("concatenates text blocks for text step", async () => {
+  it("later text step overrides content with its own text", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [{ type: "text", text: "It's always sunny in " }],
+            blocks: [{ type: "text", text: "thinking..." }],
           },
         },
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [{ type: "text", text: "San Francisco!" }],
+            blocks: [{ type: "text", text: "final answer" }],
           },
         },
         { event: "done", data: {} },
@@ -156,12 +139,12 @@ describe("useChat.send (streaming)", () => {
 
     const { result } = renderHook(() => useChat(), { wrapper });
     await act(async () => {
-      await result.current.send("weather?");
+      await result.current.send("hi");
     });
 
     const msgs = result.current.context.conversations[0].messages;
-    expect(msgs[1].content).toBe("It's always sunny in ");
-    expect(msgs[2].content).toBe("San Francisco!");
+    expect(msgs[1].content).toBe("final answer");
+    expect(msgs[1].steps).toHaveLength(2);
   });
 
   it("marks user message as error on HTTP 400", async () => {
@@ -202,6 +185,87 @@ describe("useChat.send (streaming)", () => {
     expect(msgs[0].pending).toBe(false);
     expect(msgs[1].error).toBe(true);
     expect(msgs[1].role).toBe("assistant");
+  });
+
+  it("first step with text sets content immediately and keeps pending true", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        {
+          event: "step",
+          data: {
+            step: "model",
+            blocks: [{ type: "text", text: "hello" }],
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const assistant = result.current.context.conversations[0].messages[1];
+    expect(assistant.content).toBe("hello");
+    expect(assistant.pending).toBe(false);  // done 之后
+    expect(assistant.steps).toHaveLength(1);
+  });
+
+  it("done flips assistant pending to false but keeps content", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        {
+          event: "step",
+          data: {
+            step: "model",
+            blocks: [{ type: "text", text: "first" }],
+          },
+        },
+        {
+          event: "step",
+          data: {
+            step: "model",
+            blocks: [{ type: "text", text: "second" }],
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const assistant = result.current.context.conversations[0].messages[1];
+    expect(assistant.pending).toBe(false);
+    expect(assistant.content).toBe("second");
+  });
+
+  it("event: error marks assistant pending=false + error=true", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        {
+          event: "step",
+          data: {
+            step: "model",
+            blocks: [{ type: "text", text: "partial" }],
+          },
+        },
+        { event: "error", data: { detail: "rate limit" } },
+      ]),
+    );
+
+    const { result } = renderHook(() => useChat(), { wrapper });
+    await act(async () => {
+      await result.current.send("hi");
+    });
+
+    const msgs = result.current.context.conversations[0].messages;
+    expect(msgs[1].pending).toBe(false);
+    expect(msgs[1].error).toBe(true);
+    expect(msgs[1].content).toBe("partial");
   });
 
   it("aborts the prior in-flight stream when a new send starts", async () => {

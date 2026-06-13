@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatApiError, streamChat } from "@/lib/api";
 import { useChatContext } from "@/context/ChatContext";
-import type { ChatMessage } from "@/types";
+import { extractText, toolSummary } from "@/lib/stepContent";
+import type { AssistantStep, ChatMessage } from "@/types";
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -15,24 +16,6 @@ function toastError(msg: string): void {
     globalThis as { toast?: { error: (m: string) => void } }
   ).toast;
   toast?.error(msg);
-}
-
-// 把一个 step 的 blocks 渲染成展示给用户的纯文本:
-//  - text 块按顺序拼接
-//  - 没有任何 text 块时,改用 tool_call 的占位文字,便于调试
-function renderStepContent(blocks: Array<Record<string, unknown>>): string {
-  const textParts = blocks
-    .filter((b): b is { type: string; text: string } => b.type === "text")
-    .map((b) => b.text);
-  if (textParts.length > 0) return textParts.join("");
-  return blocks
-    .filter((b) => b.type === "tool_call")
-    .map((b) => {
-      const name = String(b.name ?? "");
-      const args = b.args;
-      return `调用工具: ${name}(${JSON.stringify(args)})`;
-    })
-    .join("\n");
 }
 
 // 把任意异常翻译成展示给用户的 toast 文案
@@ -59,6 +42,10 @@ export function useChat(): UseChatValue {
     ctx;
   const [isSending, setIsSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // 流循环内不能依赖 useCallback 闭包里的 ctx.conversations(可能读到旧值),
+  // 用 ref 跟踪当前 assistant 消息的 steps,避免后续 step 追加时丢上下文。
+  // 必须在组件顶层声明(useRef 是 hook,不能在 useCallback 里调用)。
+  const assistantRef = useRef<{ steps: AssistantStep[]; content: string } | null>(null);
 
   // 组件卸载时取消尚未完成的请求
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -95,27 +82,49 @@ export function useChat(): UseChatValue {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsSending(true);
-      let lastAssistantId: string | null = null;
+      let assistantId: string | null = null;
+      // 重置 ref,避免上一轮 send 残留影响本轮
+      assistantRef.current = null;
       try {
         for await (const ev of streamChat(payload, controller.signal)) {
           if (ev.kind === "step") {
-            const content = renderStepContent(ev.blocks);
-            const assistantId = newId();
-            lastAssistantId = assistantId;
-            addMessage(id, {
-              id: assistantId,
-              role: "assistant",
-              content,
-              createdAt: Date.now(),
-              pending: true,
-              step: ev.step,
-            });
+            if (assistantId === null) {
+              assistantId = newId();
+              const initContent = extractText(ev.blocks) || toolSummary(ev.blocks);
+              assistantRef.current = {
+                steps: [{ name: ev.step, blocks: ev.blocks }],
+                content: initContent,
+              };
+              addMessage(id, {
+                id: assistantId,
+                role: "assistant",
+                content: initContent,
+                createdAt: Date.now(),
+                pending: true,
+                steps: assistantRef.current.steps,
+              });
+            } else {
+              const newContent: string =
+                extractText(ev.blocks) || assistantRef.current?.content || "";
+              const newSteps: AssistantStep[] = [
+                ...(assistantRef.current?.steps ?? []),
+                { name: ev.step, blocks: ev.blocks },
+              ];
+              assistantRef.current = { steps: newSteps, content: newContent };
+              updateMessage(id, assistantId, {
+                content: newContent,
+                steps: newSteps,
+              });
+            }
           } else if (ev.kind === "done") {
+            if (assistantId) {
+              updateMessage(id, assistantId, { pending: false });
+            }
             updateMessage(id, userMsg.id, { pending: false });
             renameIfFirstUserMessage(id, trimmed);
           } else if (ev.kind === "error") {
-            if (lastAssistantId) {
-              updateMessage(id, lastAssistantId, { error: true });
+            if (assistantId) {
+              updateMessage(id, assistantId, { pending: false, error: true });
             }
             updateMessage(id, userMsg.id, { pending: false });
             toastError(ev.detail || "智能体暂时不可用");
@@ -126,8 +135,8 @@ export function useChat(): UseChatValue {
           return;
         }
         updateMessage(id, userMsg.id, { pending: false, error: true });
-        if (lastAssistantId) {
-          updateMessage(id, lastAssistantId, { error: true });
+        if (assistantId) {
+          updateMessage(id, assistantId, { pending: false, error: true });
         }
         toastError(toastMessage(err, "请求失败"));
       } finally {
