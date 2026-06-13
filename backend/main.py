@@ -1,28 +1,18 @@
 """Weather Agent FastAPI 后端."""
 
+import json
+import logging
+from collections.abc import AsyncIterator
+from uuid import uuid4
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
 
 from agents.weather_agent import weather_agent
+from backend.schemas import ChatRequest, ChatResponse, HealthResponse
 
-
-class HealthResponse(BaseModel):
-    status: str
-
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ChatRequest(BaseModel):
-    messages: list[ChatMessage] = Field(default_factory=list)
-
-
-class ChatResponse(BaseModel):
-    reply: str
-
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Weather Agent API", version="0.1.0")
 
@@ -56,3 +46,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     reply = getattr(messages[-1], "content", "")
     return ChatResponse(reply=reply)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="messages must not be empty")
+    # Task 1 阶段先返回空 body,仅验证响应头与 400 路径;
+    # Task 2 会把 body 换成消费 weather_agent.stream 的 async generator。
+    return StreamingResponse(
+        iter([]),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )

@@ -43,3 +43,23 @@ def test_cors_allows_any_origin() -> None:
     client = TestClient(app)
     response = client.get("/health", headers={"Origin": "http://localhost:5173"})
     assert response.headers.get("access-control-allow-origin") == "*"
+
+
+def test_stream_returns_event_stream_headers() -> None:
+    """POST /api/chat/stream 响应头应为 SSE。"""
+    client = TestClient(app)
+    with client.stream(
+        "POST",
+        "/api/chat/stream",
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    ) as response:
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-store"
+
+
+def test_stream_empty_messages_returns_400() -> None:
+    """空 messages 列表应返回 400 而非 422。"""
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"messages": []})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "messages must not be empty"
