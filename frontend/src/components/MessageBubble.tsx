@@ -38,6 +38,11 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           message.error && "border-destructive bg-destructive/10",
         )}
       >
+        {message.step && (
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            {message.step}
+          </div>
+        )}
         <div className="prose prose-sm max-w-none break-words dark:prose-invert">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
