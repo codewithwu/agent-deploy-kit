@@ -2,7 +2,8 @@ const DEFAULT_API_BASE = "http://localhost:8000";
 
 /** 函数内读取,这样测试用 vi.stubEnv 改 VITE_API_BASE 才能生效 */
 function apiBase(): string {
-  return import.meta.env.VITE_API_BASE ?? DEFAULT_API_BASE;
+  const v = import.meta.env.VITE_API_BASE;
+  return v && v.length > 0 ? v : DEFAULT_API_BASE;
 }
 
 export class ChatApiError extends Error {
@@ -52,7 +53,7 @@ export async function* streamChat(
   }
 
   if (!res.body) {
-    throw new Error("invalid SSE: response has no body");
+    throw new ChatApiError(0, "invalid SSE: response has no body");
   }
 
   const reader = res.body.getReader();
@@ -69,7 +70,8 @@ export async function* streamChat(
     try {
       parsed = JSON.parse(frame.data) as typeof parsed;
     } catch (err) {
-      throw new Error(
+      throw new ChatApiError(
+        0,
         `invalid SSE: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
@@ -90,6 +92,30 @@ export async function* streamChat(
     return ev;
   }
 
+  function parseLine(line: string): StreamEvent | null {
+    if (line === "") {
+      // 空行:一个 SSE 事件块结束
+      return flushFrame();
+    }
+    if (line.startsWith(":")) {
+      // 注释行,忽略
+      return null;
+    }
+    if (!line.includes(":")) {
+      // 心跳等无字段行,忽略
+      return null;
+    }
+    const idx = line.indexOf(":");
+    const field = line.slice(0, idx);
+    const raw = line.slice(idx + 1);
+    // SSE 规范:前导单个空格去掉
+    const val = raw.startsWith(" ") ? raw.slice(1) : raw;
+    if (field === "event") frame.event = val;
+    else if (field === "data") frame.data = val;
+    // "id" / 其他字段忽略
+    return null;
+  }
+
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -99,44 +125,18 @@ export async function* streamChat(
       while (nlIdx !== -1) {
         const line = buffer.slice(0, nlIdx);
         buffer = buffer.slice(nlIdx + 1);
-        if (line === "") {
-          // 空行:一个 SSE 事件块结束
-          const ev = flushFrame();
-          if (ev) yield ev;
-        } else if (line.startsWith(":")) {
-          // 注释行,忽略
-        } else if (line.includes(":")) {
-          const idx = line.indexOf(":");
-          const field = line.slice(0, idx);
-          const raw = line.slice(idx + 1);
-          // SSE 规范:前导单个空格去掉
-          const val = raw.startsWith(" ") ? raw.slice(1) : raw;
-          if (field === "event") frame.event = val;
-          else if (field === "data") frame.data = val;
-          // "id" / 其他字段忽略
-        }
+        const ev = parseLine(line);
+        if (ev) yield ev;
         nlIdx = buffer.indexOf("\n");
       }
     }
-    // 流结束:处理 buffer 末尾残留(没有换行符的最后一帧)
+    // 流结束:处理 buffer 末尾残留(EOF 直接终止流,无尾随换行)
     if (buffer.length > 0) {
-      const line = buffer;
+      const ev = parseLine(buffer);
       buffer = "";
-      if (line === "") {
-        const ev = flushFrame();
-        if (ev) yield ev;
-      } else if (!line.startsWith(":") && line.includes(":")) {
-        const idx = line.indexOf(":");
-        const field = line.slice(0, idx);
-        const raw = line.slice(idx + 1);
-        const val = raw.startsWith(" ") ? raw.slice(1) : raw;
-        if (field === "event") frame.event = val;
-        else if (field === "data") frame.data = val;
-        const ev = flushFrame();
-        if (ev) yield ev;
-      }
+      if (ev) yield ev;
     }
-    // 流结束:再处理未触发的最后一帧(以 \n\n 结尾但读 done 时刚好用完)
+    // 流结束:data 行已设置但缺少分隔空行(后端漏发尾随 \n\n)
     if (frame.data !== undefined) {
       const ev = flushFrame();
       if (ev) yield ev;
