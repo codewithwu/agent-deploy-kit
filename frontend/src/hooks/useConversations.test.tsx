@@ -85,6 +85,32 @@ describe("useConversations", () => {
     expect(msg.error).toBe(true);
   });
 
+  it("removeMessage drops a message by id", () => {
+    const { result } = renderHook(() => useConversations());
+    let id = "";
+    act(() => {
+      id = result.current.createConversation();
+      result.current.addMessage(id, {
+        id: "m1",
+        role: "user",
+        content: "hi",
+        createdAt: 1,
+      });
+      result.current.addMessage(id, {
+        id: "m2",
+        role: "assistant",
+        content: "hello",
+        createdAt: 2,
+      });
+    });
+    act(() => {
+      result.current.removeMessage(id, "m2");
+    });
+    const messages = result.current.conversations[0].messages;
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("m1");
+  });
+
   it("renameIfFirstUserMessage updates title for empty-title conv", () => {
     const { result } = renderHook(() => useConversations());
     let id = "";

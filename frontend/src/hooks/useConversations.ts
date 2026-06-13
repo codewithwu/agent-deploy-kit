@@ -27,6 +27,7 @@ export interface UseConversationsValue {
     messageId: string,
     patch: Partial<ChatMessage>,
   ) => void;
+  removeMessage: (id: string, messageId: string) => void;
   renameIfFirstUserMessage: (id: string, content: string) => void;
 }
 
@@ -111,6 +112,23 @@ export function useConversations(): UseConversationsValue {
     [],
   );
 
+  const removeMessage = useCallback(
+    (id: string, messageId: string) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id !== id
+            ? c
+            : {
+                ...c,
+                messages: c.messages.filter((m) => m.id !== messageId),
+                updatedAt: Date.now(),
+              },
+        ),
+      );
+    },
+    [],
+  );
+
   const renameIfFirstUserMessage = useCallback(
     (id: string, content: string) => {
       setConversations((prev) =>
@@ -142,6 +160,7 @@ export function useConversations(): UseConversationsValue {
     clearCurrent,
     addMessage,
     updateMessage,
+    removeMessage,
     renameIfFirstUserMessage,
   };
 }
