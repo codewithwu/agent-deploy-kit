@@ -160,11 +160,28 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           className={cn(
             "max-w-[80%] rounded-lg border px-4 py-2 text-sm shadow-sm",
             "border-primary/20 bg-primary/10",
+            message.error && "border-destructive bg-destructive/10",
           )}
         >
           <div className="break-words">{message.content}</div>
           {message.pending && (
             <div className="mt-1 text-xs text-muted-foreground">发送中…</div>
+          )}
+          {message.error && (
+            <div className="mt-1 flex items-center gap-2 text-xs text-destructive">
+              <span>发送失败</span>
+              {onRetry && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2"
+                  onClick={() => onRetry(message)}
+                >
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                  重试
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>
