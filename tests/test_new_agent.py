@@ -77,9 +77,7 @@ def test_validate_name_rejects_empty(new_agent) -> None:
         new_agent.validate_name("")
 
 
-def test_ensure_unique_rejects_existing_dir(
-    new_agent, tmp_path: Path
-) -> None:
+def test_ensure_unique_rejects_existing_dir(new_agent, tmp_path: Path) -> None:
     """agents/<name>/ 已存在 → SystemExit。"""
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir()
@@ -109,3 +107,40 @@ def test_ensure_unique_passes_when_clean(new_agent, tmp_path: Path) -> None:
     top_init = agents_dir / "__init__.py"
     top_init.write_text("__all__ = []\n", encoding="utf-8")
     new_agent.ensure_unique("foo_agent", agents_dir, top_init)  # 不抛
+
+
+def test_append_to_top_init_inserts_alphabetically(new_agent, tmp_path: Path) -> None:
+    """按字母序把 name 插入 __all__ 与 from 行。"""
+    top_init = tmp_path / "__init__.py"
+    top_init.write_text(
+        'from agents import zeta_agent\n__all__ = ["zeta_agent"]\n',
+        encoding="utf-8",
+    )
+    new_agent.append_to_top_init("alpha_agent", top_init)
+    text = top_init.read_text(encoding="utf-8")
+    assert "alpha_agent" in text
+    assert "zeta_agent" in text
+    # 字母序: alpha < zeta
+    assert text.index("alpha_agent") < text.index("zeta_agent")
+
+
+def test_append_to_top_init_preserves_valid_python(new_agent, tmp_path: Path) -> None:
+    """修改后文本仍是合法 Python。"""
+    top_init = tmp_path / "__init__.py"
+    top_init.write_text("__all__ = []\n", encoding="utf-8")
+    new_agent.append_to_top_init("foo_agent", top_init)
+    text = top_init.read_text(encoding="utf-8")
+    compile(text, str(top_init), "exec")  # 不抛
+
+
+def test_append_to_top_init_handles_existing_imports(new_agent, tmp_path: Path) -> None:
+    """已有 from 行 → 追加在同行; 不会创建重复 import。"""
+    top_init = tmp_path / "__init__.py"
+    top_init.write_text(
+        'from agents import beta_agent\n__all__ = ["beta_agent"]\n',
+        encoding="utf-8",
+    )
+    new_agent.append_to_top_init("alpha_agent", top_init)
+    text = top_init.read_text(encoding="utf-8")
+    assert text.count("from agents import") == 1
+    assert "beta_agent, alpha_agent" in text or "alpha_agent, beta_agent" in text

@@ -14,6 +14,7 @@ __all__: list[str] = [
     "render_test_py",
     "validate_name",
     "ensure_unique",
+    "append_to_top_init",
 ]
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*_agent$"
@@ -130,3 +131,54 @@ def ensure_unique(name: str, agents_dir: Path, top_init: Path) -> None:
         )
         if re.search(pattern, text):
             raise SystemExit(f"{name!r} 已在 {top_init} 注册")
+
+
+def append_to_top_init(name: str, top_init: Path) -> None:
+    """把 name 按字母序插入顶层 agents/__init__.py 的 __all__ 与 import 行。"""
+    text = top_init.read_text(encoding="utf-8")
+
+    # 1. 找/建 from agents import 行
+    import_pattern = re.compile(r"^(from\s+agents\s+import\s+)([^\n#]*)$", re.MULTILINE)
+    match = import_pattern.search(text)
+    if match:
+        existing = [n.strip() for n in match.group(2).split(",") if n.strip()]
+        if name not in existing:
+            existing.append(name)
+            existing.sort()
+            new_line = f"{match.group(1)}{', '.join(existing)}"
+            text = text[: match.start()] + new_line + text[match.end() :]
+    else:
+        # 无 from 行, 在 __all__ 前插入
+        all_match = re.search(r"^__all__\s*=\s*\[[^\]]*\]", text, re.MULTILINE)
+        insertion = f"from agents import {name}\n"
+        if all_match:
+            text = (
+                text[: all_match.start()] + insertion + "\n" + text[all_match.start() :]
+            )
+        else:
+            text = insertion + "\n" + text
+
+    # 2. 更新 __all__
+    all_pattern = re.compile(r"^(__all__\s*=\s*)\[([^\]]*)\]", re.MULTILINE)
+    all_match = all_pattern.search(text)
+    if all_match:
+        items = [
+            n.strip().strip("'\"")
+            for n in all_match.group(2).split(",")
+            if n.strip().strip("'\"")
+        ]
+        if name not in items:
+            items.append(name)
+            items.sort()
+            new_all = f'{all_match.group(1)}["{", ".join(items)}"]'
+            text = text[: all_match.start()] + new_all + text[all_match.end() :]
+    else:
+        # 无 __all__ 行, 在文件末尾追加
+        text = text.rstrip() + f'\n__all__ = ["{name}"]\n'
+
+    # 3. 校验 + 写回
+    try:
+        compile(text, str(top_init), "exec")
+    except SyntaxError as exc:
+        raise SystemExit(f"{top_init} 修改后无法编译, 请手动检查: {exc}") from exc
+    top_init.write_text(text, encoding="utf-8")
