@@ -146,6 +146,20 @@ def test_append_to_top_init_handles_existing_imports(new_agent, tmp_path: Path) 
     assert "beta_agent, alpha_agent" in text or "alpha_agent, beta_agent" in text
 
 
+def test_append_to_top_init_quotes_each_name_in_all(
+    new_agent, tmp_path: Path
+) -> None:
+    """__all__ 列表每项必须独立加双引号, 不得把多个 name 合并成一个字符串。"""
+    top_init = tmp_path / "__init__.py"
+    top_init.write_text(
+        'from agents import zeta_agent\n__all__ = ["zeta_agent"]\n',
+        encoding="utf-8",
+    )
+    new_agent.append_to_top_init("alpha_agent", top_init)
+    text = top_init.read_text(encoding="utf-8")
+    assert '__all__ = ["alpha_agent", "zeta_agent"]' in text
+
+
 def test_main_writes_files_and_updates_top_init(
     new_agent,
     tmp_path: Path,
