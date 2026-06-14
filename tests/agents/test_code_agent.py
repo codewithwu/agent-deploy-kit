@@ -1,12 +1,13 @@
 """code_agent 加载与工具测试。"""
 
 import json
+from collections.abc import Generator
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _reset_agent_cache() -> None:
+def _reset_agent_cache() -> Generator[None, None, None]:
     """lru_cache 是模块级, 跨测试泄漏; 每个用例前后清空。"""
     from backend.agent_loader import get_agent
 
