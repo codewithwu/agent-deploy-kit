@@ -43,3 +43,12 @@ def test_render_tools_py_contains_name(new_agent) -> None:
     assert "def placeholder_tool" in out
     assert "@tool(args_schema=PlaceholderInput)" in out
     assert "weather_agent" not in out
+
+
+def test_render_test_py_contains_name(new_agent) -> None:
+    """render_test_py 输出含与 test_agent_loader 一致的 fixture 与断言。"""
+    out = new_agent.render_test_py("foo_agent")
+    assert 'monkeypatch.setenv("AGENT_NAME", "foo_agent")' in out
+    assert "from agents.foo_agent import foo_agent" in out
+    assert "get_agent() is foo_agent" in out
+    assert "weather_agent" not in out
