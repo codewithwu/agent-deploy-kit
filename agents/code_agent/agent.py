@@ -10,8 +10,6 @@ from agents.code_agent.tools import (
 )
 from utils.langchain_model import get_singleton_client
 
-from langchain.agents.middleware import TodoListMiddleware  # noqa: F401
-
 code_agent = create_agent(
     model=get_singleton_client(llm_provider="longcat"),
     tools=[run_bash, run_read, run_write, detect_complex_task],
