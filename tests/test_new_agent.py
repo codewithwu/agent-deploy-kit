@@ -144,3 +144,65 @@ def test_append_to_top_init_handles_existing_imports(new_agent, tmp_path: Path) 
     text = top_init.read_text(encoding="utf-8")
     assert text.count("from agents import") == 1
     assert "beta_agent, alpha_agent" in text or "alpha_agent, beta_agent" in text
+
+
+def test_main_writes_files_and_updates_top_init(
+    new_agent,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """main() 创建子包 + 顶层 __init__ 接入 + tests/agents/__init__.py。"""
+    # 复刻仓库根结构
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "__init__.py").write_text("__all__ = []\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "agents").mkdir()
+
+    monkeypatch.chdir(tmp_path)
+    rc = new_agent.main(["foo_agent"])
+    assert rc == 0
+
+    # 子包三文件
+    assert (agents_dir / "foo_agent" / "__init__.py").exists()
+    assert (agents_dir / "foo_agent" / "agent.py").exists()
+    assert (agents_dir / "foo_agent" / "tools.py").exists()
+    # 测试样板
+    assert (tmp_path / "tests" / "agents" / "__init__.py").exists()
+    assert (tmp_path / "tests" / "agents" / "test_foo_agent.py").exists()
+    # 顶层 __init__.py 被更新
+    top_text = (agents_dir / "__init__.py").read_text(encoding="utf-8")
+    assert "foo_agent" in top_text
+    compile(top_text, str(agents_dir / "__init__.py"), "exec")
+
+
+def test_main_rejects_duplicate_run(
+    new_agent, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """main() 第二次运行同名 → SystemExit, 不覆盖既有文件。"""
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "__init__.py").write_text("__all__ = []\n", encoding="utf-8")
+    (tmp_path / "tests" / "agents").mkdir(parents=True)
+    (agents_dir / "foo_agent").mkdir()
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        new_agent.main(["foo_agent"])
+
+
+def test_main_uses_module_constants(
+    new_agent, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """不传 argv 时, main() 从 sys.argv[1:] 读取。"""
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "__init__.py").write_text("__all__ = []\n", encoding="utf-8")
+    (tmp_path / "tests" / "agents").mkdir(parents=True)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["new_agent.py", "foo_agent"])
+    rc = new_agent.main()
+    assert rc == 0
+    assert (agents_dir / "foo_agent" / "agent.py").exists()

@@ -1,5 +1,6 @@
 """一键生成新智能体子包 + 顶层接入 + 加载测试。"""
 
+import argparse
 import re
 from pathlib import Path
 
@@ -15,6 +16,7 @@ __all__: list[str] = [
     "validate_name",
     "ensure_unique",
     "append_to_top_init",
+    "main",
 ]
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*_agent$"
@@ -182,3 +184,48 @@ def append_to_top_init(name: str, top_init: Path) -> None:
     except SyntaxError as exc:
         raise SystemExit(f"{top_init} 修改后无法编译, 请手动检查: {exc}") from exc
     top_init.write_text(text, encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI 入口: 生成 agents/<name>/ 子包 + 顶层接入 + 加载测试。"""
+    parser = argparse.ArgumentParser(
+        prog="new_agent",
+        description="一键生成新智能体子包 (子包 + 顶层接入 + 加载测试)。",
+    )
+    parser.add_argument(
+        "name",
+        help="智能体名，形如 weather_agent (小写起头, snake_case, _agent 后缀)",
+    )
+    args = parser.parse_args(argv)
+    name: str = args.name
+
+    validate_name(name)
+    ensure_unique(name, AGENTS_PKG, AGENTS_INIT)
+
+    pkg_dir = AGENTS_PKG / name
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text(render_init_py(name), encoding="utf-8")
+    (pkg_dir / "agent.py").write_text(render_agent_py(name), encoding="utf-8")
+    (pkg_dir / "tools.py").write_text(render_tools_py(name), encoding="utf-8")
+
+    TESTS_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+    (TESTS_AGENTS_DIR / "__init__.py").write_text("", encoding="utf-8")
+    (TESTS_AGENTS_DIR / f"test_{name}.py").write_text(
+        render_test_py(name), encoding="utf-8"
+    )
+
+    append_to_top_init(name, AGENTS_INIT)
+
+    print(f"已生成: {pkg_dir / '__init__.py'}")
+    print(f"已生成: {pkg_dir / 'agent.py'}")
+    print(f"已生成: {pkg_dir / 'tools.py'}")
+    print(f"已生成: {TESTS_AGENTS_DIR / f'test_{name}.py'}")
+    print(f"已更新: {AGENTS_INIT}")
+    print(f"设置 AGENT_NAME={name} 后启动后端即可。")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())
