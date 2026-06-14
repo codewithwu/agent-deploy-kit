@@ -3,6 +3,7 @@
 import importlib
 import os
 from functools import lru_cache
+from typing import Any
 
 __all__: list[str] = ["get_agent"]
 
@@ -10,7 +11,7 @@ _AGENT_NAME_ENV = "AGENT_NAME"
 
 
 @lru_cache(maxsize=1)
-def get_agent() -> object:
+def get_agent() -> Any:
     name = os.environ.get(_AGENT_NAME_ENV)
     if not name:
         raise RuntimeError(f"{_AGENT_NAME_ENV} is not set")
