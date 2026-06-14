@@ -34,3 +34,12 @@ def test_render_agent_py_contains_name(new_agent) -> None:
     assert "foo_agent = create_agent(" in out
     assert "tools=[placeholder_tool]" in out
     assert "weather_agent" not in out
+
+
+def test_render_tools_py_contains_name(new_agent) -> None:
+    """render_tools_py 输出含 PlaceholderInput + placeholder_tool。"""
+    out = new_agent.render_tools_py("foo_agent")
+    assert "class PlaceholderInput" in out
+    assert "def placeholder_tool" in out
+    assert "@tool(args_schema=PlaceholderInput)" in out
+    assert "weather_agent" not in out
