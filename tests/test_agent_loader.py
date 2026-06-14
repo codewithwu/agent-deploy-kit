@@ -1,0 +1,25 @@
+"""agent_loader 单元测试。"""
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_agent_cache():
+    """lru_cache 是模块级，跨测试泄漏；每个用例前后清空。"""
+    from backend.agent_loader import get_agent
+
+    get_agent.cache_clear()
+    yield
+    get_agent.cache_clear()
+
+
+def test_missing_env_raises_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未设置 AGENT_NAME 时 get_agent() 应抛 RuntimeError。"""
+    monkeypatch.delenv("AGENT_NAME", raising=False)
+
+    from backend.agent_loader import get_agent
+
+    with pytest.raises(RuntimeError, match="AGENT_NAME"):
+        get_agent()
