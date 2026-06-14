@@ -1,5 +1,6 @@
 """一键生成新智能体子包 + 顶层接入 + 加载测试。"""
 
+import re
 from pathlib import Path
 
 __all__: list[str] = [
@@ -109,7 +110,7 @@ def render_test_py(name: str) -> str:
 
 def validate_name(name: str) -> None:
     """校验 name 符合 <prefix>_agent 约定; 失败 SystemExit(1)。"""
-    if not __import__("re").match(NAME_PATTERN, name):
+    if not re.match(NAME_PATTERN, name):
         raise SystemExit(
             f"name 必须形如 <prefix>_agent, 小写起头, snake_case, 实际: {name!r}"
         )
