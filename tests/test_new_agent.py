@@ -150,7 +150,6 @@ def test_main_writes_files_and_updates_top_init(
     new_agent,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture,
 ) -> None:
     """main() 创建子包 + 顶层 __init__ 接入 + tests/agents/__init__.py。"""
     # 复刻仓库根结构
