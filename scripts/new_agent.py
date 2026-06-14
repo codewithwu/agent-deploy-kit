@@ -10,6 +10,7 @@ __all__: list[str] = [
     "render_init_py",
     "render_agent_py",
     "render_tools_py",
+    "render_test_py",
 ]
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*_agent$"
@@ -73,4 +74,33 @@ def render_tools_py(name: str) -> str:
         "        回显结果\n"
         '    """\n'
         '    return f"placeholder: {query}"\n'
+    )
+
+
+def render_test_py(name: str) -> str:
+    """渲染 tests/agents/test_<name>.py 内容。"""
+    return (
+        f'"""{name} 加载测试。"""\n'
+        "\n"
+        "import pytest\n"
+        "\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def _reset_agent_cache() -> None:\n"
+        '    """lru_cache 是模块级, 跨测试泄漏; 每个用例前后清空。"""\n'
+        "    from backend.agent_loader import get_agent\n"
+        "\n"
+        "    get_agent.cache_clear()\n"
+        "    yield\n"
+        "    get_agent.cache_clear()\n"
+        "\n"
+        "\n"
+        "def test_loads_agent(monkeypatch: pytest.MonkeyPatch) -> None:\n"
+        f'    """AGENT_NAME={name} 时返回 {name} 实例。"""\n'
+        f'    monkeypatch.setenv("AGENT_NAME", "{name}")\n'
+        "\n"
+        f"    from agents.{name} import {name}\n"
+        "    from backend.agent_loader import get_agent\n"
+        "\n"
+        f"    assert get_agent() is {name}\n"
     )
