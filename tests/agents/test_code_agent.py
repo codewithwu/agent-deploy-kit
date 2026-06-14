@@ -145,3 +145,27 @@ def test_detect_complex_task_handles_llm_failure(fake_llm: _FakeLLM) -> None:
 
     assert result.startswith("Error: 任务拆解失败")
     assert "网络断开" in result
+
+
+def test_agent_registers_detect_complex_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """agent.py 构造的 code_agent 应注册 detect_complex_task 工具."""
+    monkeypatch.setenv("AGENT_NAME", "code_agent")
+
+    from agents.code_agent.agent import code_agent
+    from agents.code_agent.tools import detect_complex_task
+
+    found = False
+    for node in code_agent.nodes.values():
+        runnable = (
+            getattr(node, "runnable", None)
+            or getattr(node, "data", None)
+            or node
+        )
+        tools_by_name = getattr(runnable, "tools_by_name", None)
+        if tools_by_name and "detect_complex_task" in tools_by_name:
+            assert tools_by_name["detect_complex_task"] is detect_complex_task
+            found = True
+            break
+    assert found, "detect_complex_task 未注册到 code_agent 的 ToolNode"
