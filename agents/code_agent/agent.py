@@ -13,7 +13,6 @@ from utils.langchain_model import get_singleton_client
 code_agent = create_agent(
     model=get_singleton_client(llm_provider="longcat"),
     tools=[run_bash, run_read, run_write, detect_complex_task],
-    # middleware=[TodoListMiddleware()],
     system_prompt=(
         "You are a code agent.\n"
         "\n"
