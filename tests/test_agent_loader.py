@@ -42,3 +42,13 @@ def test_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.agent_loader import get_agent
 
     assert get_agent() is get_agent()
+
+
+def test_unknown_name_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AGENT_NAME=不存在的子包 时 importlib 抛 ModuleNotFoundError。"""
+    monkeypatch.setenv("AGENT_NAME", "no_such_agent_xyz")
+
+    from backend.agent_loader import get_agent
+
+    with pytest.raises(ModuleNotFoundError):
+        get_agent()
