@@ -52,3 +52,26 @@ def test_render_test_py_contains_name(new_agent) -> None:
     assert "from agents.foo_agent import foo_agent" in out
     assert "get_agent() is foo_agent" in out
     assert "weather_agent" not in out
+
+
+def test_validate_name_accepts_weather_agent(new_agent) -> None:
+    """validate_name 不对合法 name 抛错。"""
+    new_agent.validate_name("weather_agent")  # 不抛
+
+
+def test_validate_name_rejects_no_suffix(new_agent) -> None:
+    """缺 _agent 后缀 → SystemExit。"""
+    with pytest.raises(SystemExit):
+        new_agent.validate_name("weather")
+
+
+def test_validate_name_rejects_uppercase(new_agent) -> None:
+    """大写 → SystemExit。"""
+    with pytest.raises(SystemExit):
+        new_agent.validate_name("Weather_agent")
+
+
+def test_validate_name_rejects_empty(new_agent) -> None:
+    """空串 → SystemExit。"""
+    with pytest.raises(SystemExit):
+        new_agent.validate_name("")

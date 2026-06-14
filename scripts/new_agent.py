@@ -11,6 +11,7 @@ __all__: list[str] = [
     "render_agent_py",
     "render_tools_py",
     "render_test_py",
+    "validate_name",
 ]
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*_agent$"
@@ -104,3 +105,11 @@ def render_test_py(name: str) -> str:
         "\n"
         f"    assert get_agent() is {name}\n"
     )
+
+
+def validate_name(name: str) -> None:
+    """校验 name 符合 <prefix>_agent 约定; 失败 SystemExit(1)。"""
+    if not __import__("re").match(NAME_PATTERN, name):
+        raise SystemExit(
+            f"name 必须形如 <prefix>_agent, 小写起头, snake_case, 实际: {name!r}"
+        )
