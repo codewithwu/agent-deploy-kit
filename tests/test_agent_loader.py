@@ -23,3 +23,13 @@ def test_missing_env_raises_runtime_error(
 
     with pytest.raises(RuntimeError, match="AGENT_NAME"):
         get_agent()
+
+
+def test_loads_weather_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AGENT_NAME=weather_agent 时返回 weather_agent 实例。"""
+    monkeypatch.setenv("AGENT_NAME", "weather_agent")
+
+    from agents.weather_agent import weather_agent
+    from backend.agent_loader import get_agent
+
+    assert get_agent() is weather_agent
