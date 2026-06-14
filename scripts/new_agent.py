@@ -172,7 +172,8 @@ def append_to_top_init(name: str, top_init: Path) -> None:
         if name not in items:
             items.append(name)
             items.sort()
-            new_all = f'{all_match.group(1)}["{", ".join(items)}"]'
+            joined = ", ".join(f'"{n}"' for n in items)
+            new_all = f"{all_match.group(1)}[{joined}]"
             text = text[: all_match.start()] + new_all + text[all_match.end() :]
     else:
         # 无 __all__ 行, 在文件末尾追加
