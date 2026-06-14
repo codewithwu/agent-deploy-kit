@@ -42,6 +42,10 @@ agents/
 5. 顶层 `agents/__init__.py` 添加 `from agents import <name>_agent` 并同步 `__all__`。
 6. 改完后跑 `uv run ruff check agents/`、`uv run mypy agents/`、相关 `uv run pytest`。
 
+## 一键脚手架
+
+执行 `uv run python scripts/new_agent.py <name>` 可自动完成上述 1–5 步，生成子包三层文件 + 顶层 `agents/__init__.py` 接入 + 加载测试。生成物含一个 `placeholder_tool` 占位，替换或删除后再正式使用。
+
 ## 模型与 provider
 
 - LLM 客户端统一通过 `utils.langchain_model.get_singleton_client(provider=...)` 获取；新增 provider 走 `.env` + 该工具函数，不在 `agent.py` 内直接 `os.getenv`。
