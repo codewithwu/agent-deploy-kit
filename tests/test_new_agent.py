@@ -78,7 +78,7 @@ def test_validate_name_rejects_empty(new_agent) -> None:
 
 
 def test_ensure_unique_rejects_existing_dir(
-    new_agent, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    new_agent, tmp_path: Path
 ) -> None:
     """agents/<name>/ 已存在 → SystemExit。"""
     agents_dir = tmp_path / "agents"
