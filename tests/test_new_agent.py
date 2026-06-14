@@ -75,3 +75,37 @@ def test_validate_name_rejects_empty(new_agent) -> None:
     """空串 → SystemExit。"""
     with pytest.raises(SystemExit):
         new_agent.validate_name("")
+
+
+def test_ensure_unique_rejects_existing_dir(
+    new_agent, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """agents/<name>/ 已存在 → SystemExit。"""
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "foo_agent").mkdir()
+    top_init = tmp_path / "agents" / "__init__.py"
+    with pytest.raises(SystemExit):
+        new_agent.ensure_unique("foo_agent", agents_dir, top_init)
+
+
+def test_ensure_unique_rejects_already_registered(new_agent, tmp_path: Path) -> None:
+    """__init__.py 已注册 name → SystemExit。"""
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    top_init = agents_dir / "__init__.py"
+    top_init.write_text(
+        'from agents import foo_agent\n__all__ = ["foo_agent"]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit):
+        new_agent.ensure_unique("foo_agent", agents_dir, top_init)
+
+
+def test_ensure_unique_passes_when_clean(new_agent, tmp_path: Path) -> None:
+    """无冲突 → 不抛。"""
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    top_init = agents_dir / "__init__.py"
+    top_init.write_text("__all__ = []\n", encoding="utf-8")
+    new_agent.ensure_unique("foo_agent", agents_dir, top_init)  # 不抛

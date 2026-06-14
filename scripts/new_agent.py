@@ -13,6 +13,7 @@ __all__: list[str] = [
     "render_tools_py",
     "render_test_py",
     "validate_name",
+    "ensure_unique",
 ]
 
 NAME_PATTERN = r"^[a-z][a-z0-9_]*_agent$"
@@ -114,3 +115,18 @@ def validate_name(name: str) -> None:
         raise SystemExit(
             f"name 必须形如 <prefix>_agent, 小写起头, snake_case, 实际: {name!r}"
         )
+
+
+def ensure_unique(name: str, agents_dir: Path, top_init: Path) -> None:
+    """校验 agents/<name>/ 与顶层 __init__.py 均未注册 name。"""
+    target = agents_dir / name
+    if target.exists():
+        raise SystemExit(f"{target} 已存在，请删除后重试或改名")
+    if top_init.exists():
+        text = top_init.read_text(encoding="utf-8")
+        pattern = (
+            r"(?:from\s+agents\s+import\s+[^#\n]*\b" + re.escape(name) + r"\b"
+            r"|__all__\s*=\s*\[[^\]]*\b" + re.escape(name) + r"\b[^\]]*\])"
+        )
+        if re.search(pattern, text):
+            raise SystemExit(f"{name!r} 已在 {top_init} 注册")
