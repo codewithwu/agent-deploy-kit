@@ -1,10 +1,8 @@
 """code_agent 加载与工具测试。"""
 
 import json
-from typing import Any
 
 import pytest
-from pydantic import BaseModel
 
 
 @pytest.fixture(autouse=True)
