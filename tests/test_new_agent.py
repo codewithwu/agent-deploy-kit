@@ -25,3 +25,12 @@ def test_render_init_py_contains_name(new_agent) -> None:
     out = new_agent.render_init_py("foo_agent")
     assert "from agents.foo_agent.agent import foo_agent" in out
     assert '__all__ = ["foo_agent"]' in out
+
+
+def test_render_agent_py_contains_name(new_agent) -> None:
+    """render_agent_py 输出含 create_agent 调用且不含 weather_agent 字面量。"""
+    out = new_agent.render_agent_py("foo_agent")
+    assert "from agents.foo_agent.tools import placeholder_tool" in out
+    assert "foo_agent = create_agent(" in out
+    assert "tools=[placeholder_tool]" in out
+    assert "weather_agent" not in out
