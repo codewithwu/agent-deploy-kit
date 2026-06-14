@@ -161,6 +161,7 @@ def test_agent_registers_detect_complex_task(
         runnable = (
             getattr(node, "runnable", None)
             or getattr(node, "data", None)
+            or getattr(node, "bound", None)
             or node
         )
         tools_by_name = getattr(runnable, "tools_by_name", None)
