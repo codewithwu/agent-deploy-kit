@@ -33,3 +33,12 @@ def test_loads_weather_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.agent_loader import get_agent
 
     assert get_agent() is weather_agent
+
+
+def test_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """多次调用 get_agent() 应返回同一实例（lru_cache 命中）。"""
+    monkeypatch.setenv("AGENT_NAME", "weather_agent")
+
+    from backend.agent_loader import get_agent
+
+    assert get_agent() is get_agent()
