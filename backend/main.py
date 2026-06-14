@@ -11,10 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import BaseMessage
 
-from agents.weather_agent import weather_agent
+from backend.agent_loader import get_agent
 from backend.schemas import ChatRequest, ChatResponse, HealthResponse
 
 logger = logging.getLogger(__name__)
+
+agent = get_agent()  # 启动期主动加载；env/模块错误在此抛出
 
 
 def _sse(event: str, data: object, *, id: str | None = None) -> str:
@@ -31,7 +33,7 @@ async def event_generator(request: ChatRequest) -> AsyncIterator[bytes]:
     # 流中异常类型不可控(LLM SDK / LangChain 内部),边界代码用 except Exception
     # 并强制 logging.exception 留痕,响应头已发出故不再 raise(详见 spec 错误处理段)。
     try:
-        for chunk in weather_agent.stream(
+        for chunk in agent.stream(
             {"messages": [m.model_dump() for m in request.messages]},
             stream_mode="updates",
             version="v2",
@@ -73,9 +75,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages must not be empty")
     try:
-        result = weather_agent.invoke(
-            {"messages": [m.model_dump() for m in request.messages]}
-        )
+        result = agent.invoke({"messages": [m.model_dump() for m in request.messages]})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
