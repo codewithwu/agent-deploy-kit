@@ -194,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "name",
-        help="智能体名，形如 weather_agent (小写起头, snake_case, _agent 后缀)",
+        help="智能体名，形如 weather_agent（小写起头, snake_case, _agent 后缀）",
     )
     args = parser.parse_args(argv)
     name: str = args.name
