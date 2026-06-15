@@ -1,0 +1,21 @@
+services:
+  redis:
+    image: redis/redis-stack:latest
+    container_name: redis-stack-container
+    restart: always # 设置为 always 或 unless-stopped
+    ports:
+      - "6379:6379" # 将 Redis 的 6379 端口映射到宿主机
+    volumes:
+      - redis_data:/data # 数据持久化
+      - redis_logs:/var/log/redis # 日志挂载
+    environment:
+      - REDIS_ARGS=--requirepass 158168 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "158168", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data: # 命名数据卷
+  redis_logs: # 命名日志卷

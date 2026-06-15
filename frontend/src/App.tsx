@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function App() {
+  const agentName = import.meta.env.VITE_AGENT_NAME || "Weather Agent";
   return (
     <ChatProvider>
       <div className="flex h-screen w-screen overflow-hidden">
@@ -11,7 +12,7 @@ export default function App() {
           <DesktopSidebar />
         </div>
         <main className="flex-1">
-          <ChatWindow />
+          <ChatWindow agentName={agentName} />
         </main>
       </div>
       <Toaster richColors position="top-right" />

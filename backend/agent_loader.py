@@ -16,6 +16,7 @@ def get_agent() -> Any:
     if not name:
         raise RuntimeError(f"{_AGENT_NAME_ENV} is not set")
     module = importlib.import_module(f"agents.{name}.agent")
+    print(f"module {module}")
     instance = getattr(module, name, None)
     if instance is None:
         raise RuntimeError(f"agents.{name}.agent has no attribute {name!r}")
