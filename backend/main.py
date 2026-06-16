@@ -3,15 +3,21 @@
 import json
 import logging
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import BaseMessage
+from starlette.types import ExceptionHandler
 
 from backend.agent_loader import get_agent
+from backend.auth.config import settings as auth_settings  # noqa: F401  启动期校验 JWT_SECRET
+from backend.auth.redis_client import close_redis, init_redis
+from backend.auth import router as auth_router, validation_exception_handler
 from backend.schemas import ChatRequest, ChatResponse, HealthResponse
 
 logger = logging.getLogger(__name__)
@@ -55,7 +61,23 @@ async def event_generator(request: ChatRequest) -> AsyncIterator[bytes]:
         yield _sse("error", {"detail": str(exc)}).encode("utf-8")
 
 
-app = FastAPI(title="Weather Agent API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # lifespan:启动期初始化 Redis 连接池,关闭期优雅释放。
+    await init_redis()
+    yield
+    await close_redis()
+
+
+app = FastAPI(title="Weather Agent API", version="0.1.0", lifespan=lifespan)
+
+# 全局 Pydantic 校验异常处理器,把 FastAPI 默认的 422 转换为 400(详见 backend/auth)。
+# Starlette 的 add_exception_handler 期望 (Request, Exception),此处用 RequestValidationError 子类;
+# 通过 cast 把处理器签名拓宽为 Starlette 期望的形式,既消除 mypy 报错又保持运行期类型安全。
+app.add_exception_handler(
+    RequestValidationError,
+    cast(ExceptionHandler, validation_exception_handler),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -96,3 +118,6 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
+
+
+app.include_router(auth_router, prefix="/api/auth")
