@@ -3,6 +3,7 @@
 @.claude/rules/behavioral.md
 @.claude/rules/python.md
 @.claude/rules/tooling.md
+@.claude/rules/frontend.md
 
 ## 项目
 

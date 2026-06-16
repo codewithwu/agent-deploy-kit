@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ChatApiError, streamChat } from "@/lib/api";
 import { useChatContext } from "@/context/ChatContext";
 import { extractText, toolSummary } from "@/lib/stepContent";
@@ -17,6 +18,11 @@ function toastError(msg: string): void {
   ).toast;
   toast?.error(msg);
 }
+
+// 本机 LLM 单轮多步调用通常在数十毫秒内完成,React 18 自动批处理会把所有 setState
+// 合并成一次渲染,用户根本看不到 TaskListView。强制最少 500ms 显示时间,保证 UI
+// 真的能被人眼捕捉到。值不能太小(否则用户还是来不及看),也不能太大(否则显得呆滞)。
+const MIN_TASKLIST_DISPLAY_MS = 500;
 
 // 把任意异常翻译成展示给用户的 toast 文案
 function toastMessage(err: unknown, fallbackDetail: string): string {
@@ -101,6 +107,8 @@ export function useChat(): UseChatValue {
       const assistantId = placeholderAssistantId;
       // 重置 ref,避免上一轮 send 残留影响本轮
       assistantRef.current = null;
+      // 记录本轮流开始时间,用于保证 TaskListView 至少展示 MIN_TASKLIST_DISPLAY_MS。
+      const streamStart = Date.now();
       let firstStepHandled = false;
       try {
         for await (const ev of streamChat(payload, controller.signal)) {
@@ -116,12 +124,27 @@ export function useChat(): UseChatValue {
                 ]
               : [{ name: ev.step, blocks: ev.blocks }];
             assistantRef.current = { steps: newSteps, content: newContent };
-            updateMessage(id, assistantId, {
-              content: newContent,
-              steps: newSteps,
+            // flushSync 强制 React 在每个 step 事件后立即渲染,否则 for-await 循环里的
+            // 多个 setState 会被 React 18 批处理合并成一次,用户看不到逐步出现的 TaskListView。
+            const conversationId = id;
+            flushSync(() => {
+              updateMessage(conversationId, assistantId, {
+                content: newContent,
+                steps: newSteps,
+              });
             });
             firstStepHandled = true;
           } else if (ev.kind === "done") {
+            // 本机 LLM 一次完整多步调用通常 < 100ms 就完成,直接翻 pending=false
+            // 会让 TaskListView 一闪而过。强制最少展示 MIN_TASKLIST_DISPLAY_MS。
+            if (firstStepHandled) {
+              const elapsed = Date.now() - streamStart;
+              if (elapsed < MIN_TASKLIST_DISPLAY_MS) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, MIN_TASKLIST_DISPLAY_MS - elapsed),
+                );
+              }
+            }
             updateMessage(id, assistantId, { pending: false });
             updateMessage(id, userMsg.id, { pending: false });
             renameIfFirstUserMessage(id, trimmed);
