@@ -39,3 +39,17 @@ scripts/
 ./scripts/docker/all.sh remove       # 删除所有
 ./scripts/docker/all.sh status       # 查看所有状态
 ```
+
+## init_admin.py
+
+创建/更新一个 admin 账号（开发期与本地烟测用）：
+
+```bash
+uv run python scripts/init_admin.py <username> <email> <password>
+# 或交互输入密码
+uv run python scripts/init_admin.py <username> <email>
+```
+
+- 幂等：username 已存在 + 无 `--force` → 报错退出（code 2）。
+- `--force` 时把现有用户角色置为 `admin`、重置密码、改 email。
+- 生产慎用。
