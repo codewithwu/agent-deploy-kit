@@ -6,4 +6,4 @@ backend.main 启动时调用 get_agent() 读取 AGENT_NAME；本兜底确保 pyt
 
 import os
 
-os.environ.setdefault("AGENT_NAME", "weather_agent")
+os.environ.setdefault("AGENT_NAME", "code_agent")
