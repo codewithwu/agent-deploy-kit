@@ -9,6 +9,6 @@ from backend.auth import security  # noqa: F401
 from backend.auth import schemas  # noqa: F401
 from backend.auth import service  # noqa: F401
 from backend.auth import deps  # noqa: F401
-from backend.auth.routes import router
+from backend.auth.routes import router, validation_exception_handler
 
-__all__ = ["router"]
+__all__ = ["router", "validation_exception_handler"]
