@@ -181,6 +181,15 @@ agent-deploy-kit/
 | `backend/__init__.py` | 空包（`__all__: list[str] = []`） | 新增 backend 子模块时 |
 | `backend/agent_loader.py` | `get_agent()`（`@lru_cache(maxsize=1)`）按 `AGENT_NAME` 动态 `importlib.import_module("agents.<name>.agent")` 并取同名属性 | 调整加载策略、改 env 变量名、增/减缓存层 |
 | `backend/main.py` | `app = FastAPI(...)`；`/health`（GET）、`/api/chat`（POST，body=`{messages: [{role, content}, ...]}`，返 `ChatResponse`）、`/api/chat/stream`（POST，SSE 流式输出 `step`/`done`/`error` 事件）；CORS 全开（开发期） | 新增端点、调整异常处理、改流式协议 |
+| `backend/auth/__init__.py` | 导出 `router` | 调整对外 API |
+| `backend/auth/config.py` | `AuthSettings` (pydantic-settings) 读 JWT_SECRET / TTL / REDIS_URL | 增/改认证配置 |
+| `backend/auth/redis_client.py` | `init_redis()` 启动期 ping；`get_redis()` 闭包返回单例；`close_redis()` lifespan 收尾 | 改 Redis 配置/连接策略 |
+| `backend/auth/security.py` | `hash_password` / `verify_password` / `create_access_token` / `create_refresh_token` / `decode_token` / `blacklist_refresh` / `is_refresh_blacklisted` | 改密码哈希算法/JWT 字段/黑名单存储 |
+| `backend/auth/schemas.py` | `RegisterIn` / `LoginIn` / `ChangePasswordIn` / `DeleteMeIn` / `UserOut` / `TokenPairOut` / `LoginOut` / `VerifyOut` | 增/改请求/响应模型 |
+| `backend/auth/deps.py` | `get_current_user`（不强制 is_active）；`require_role(*allowed)` 依赖工厂 | 改鉴权语义/加角色守卫 |
+| `backend/auth/service.py` | `register` / `login` / `logout` / `refresh` / `change_password` / `delete_me` + 业务异常 | 增/改业务逻辑 |
+| `backend/auth/routes.py` | `/api/auth/{register,login,logout,refresh,verify,me,me/password,me}` 共 8 端点；登录限速；422→400 处理器 | 增/改端点 |
+| `backend/models/user.py` | `User`（含 `role` + CheckConstraint）+ `UserRole` 关联表 | 改用户字段/加角色字段 |
 | `backend/schemas.py` | `HealthResponse` / `ChatMessage` / `ChatRequest` / `ChatResponse` | 增/改请求/响应模型 |
 
 ### `docker/` —— 基础设施 compose
@@ -204,6 +213,7 @@ agent-deploy-kit/
 | `docker/all.sh` | 一键管理所有容器（串行调各 `*.sh`） | 新增/删除服务时同步更新 |
 | `docker/redis.sh` | Redis 容器封装（`start` / `stop` / `restart` / `remove` / `status` / `logs`） | 增/改子命令或 compose 路径 |
 | `docker/pgvector.sh` | pgvector 容器封装（同上） | 增/改子命令或 compose 路径 |
+| `init_admin.py` | 幂等创建/更新 admin 账号（CLI） | 改脚手架行为 |
 
 ### `frontend/` —— React 前端
 
@@ -244,6 +254,9 @@ agent-deploy-kit/
 | `tests/conftest.py` | `os.environ.setdefault("AGENT_NAME", "weather_agent")` | `AGENT_NAME` 默认值变更时 |
 | `tests/test_backend.py` | `TestClient(app)` 跑 `/health`、空 messages 返 400、`/api/chat` 调用 `weather_agent`、CORS 任意 Origin | 增/改后端接口或异常分支 |
 | `tests/test_agent_loader.py` | `get_agent()` 单元测试：env 缺失抛 `RuntimeError`、正常加载 `weather_agent`、`lru_cache` 复用同一实例、未知名抛 `ModuleNotFoundError`（每个用例前后 `cache_clear`） | 调整 agent_loader 加载/缓存策略 |
+| `test_security.py` | security.py 单元测试（哈希/JWT/黑名单） | 改 security 行为时同步 |
+| `test_auth.py` | auth 端到端 HTTP 测试 | 改端点/契约时同步 |
+| `test_service_register_login.py` / `test_service_misc.py` | service.py 单元测试 | 改业务逻辑时同步 |
 
 ### `docs/superpowers/` —— 设计与实施文档
 
@@ -290,3 +303,8 @@ agent-deploy-kit/
 | 升级前端依赖 | `frontend/package.json` → `cd frontend && pnpm install` |
 | 写设计稿 / 实施计划 | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` + `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` |
 | 写发版说明 | `CHANGELOG.md` |
+| 调整 JWT TTL / 密钥 | `.env`（`JWT_SECRET` / `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS`） |
+| 新增/调整 auth 端点 | `backend/auth/routes.py` + `backend/auth/schemas.py` + `tests/test_auth.py` |
+| 调整角色集合（user/admin → 别的） | `backend/models/user.py`（CheckConstraint）+ 迁移（手工）+ `init_admin.py` |
+| 启动 Redis 做 token 黑名单 | `bash scripts/docker/redis.sh start` |
+| 启动 Postgres 跑迁移 | `bash scripts/docker/pgvector.sh start` + `uv run alembic upgrade head` |
