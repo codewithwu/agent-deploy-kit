@@ -31,7 +31,9 @@ async def get_current_user(
         raise security.TokenError("token revoked")
 
     user_id = int(payload["sub"])
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
     if user is None:
         raise security.TokenError("user not found")
     return user

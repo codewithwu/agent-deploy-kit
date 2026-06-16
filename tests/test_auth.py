@@ -73,9 +73,11 @@ async def test_login_unknown_user_same_message(client: AsyncClient) -> None:
 
 async def test_verify_token(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.get(
         "/api/auth/verify",
         headers={"Authorization": f"Bearer {login['access_token']}"},
@@ -91,9 +93,11 @@ async def test_verify_without_token_401(client: AsyncClient) -> None:
 
 async def test_me_returns_user(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.get(
         "/api/auth/me", headers={"Authorization": f"Bearer {login['access_token']}"}
     )
@@ -104,9 +108,11 @@ async def test_me_returns_user(client: AsyncClient) -> None:
 
 async def test_refresh_rotates(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.post(
         "/api/auth/refresh",
         headers={"Authorization": f"Bearer {login['refresh_token']}"},
@@ -125,9 +131,11 @@ async def test_refresh_rotates(client: AsyncClient) -> None:
 
 async def test_logout_returns_204(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.post(
         "/api/auth/logout",
         headers={"Authorization": f"Bearer {login['access_token']}"},
@@ -137,9 +145,11 @@ async def test_logout_returns_204(client: AsyncClient) -> None:
 
 async def test_change_password_success(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.patch(
         "/api/auth/me/password",
         json={"old_password": "Hello12345", "new_password": "NewPass1234"},
@@ -162,9 +172,11 @@ async def test_change_password_success(client: AsyncClient) -> None:
 
 async def test_change_password_wrong_old_401(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.patch(
         "/api/auth/me/password",
         json={"old_password": "WrongPass1", "new_password": "NewPass1234"},
@@ -175,9 +187,11 @@ async def test_change_password_wrong_old_401(client: AsyncClient) -> None:
 
 async def test_delete_me_soft_deletes(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     r = await client.request(
         "DELETE",
         "/api/auth/me",
@@ -195,9 +209,11 @@ async def test_delete_me_soft_deletes(client: AsyncClient) -> None:
 
 async def test_deleted_user_cannot_register_same_username(client: AsyncClient) -> None:
     await client.post("/api/auth/register", json=REGISTER_OK)
-    login = (await client.post(
-        "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
-    )).json()
+    login = (
+        await client.post(
+            "/api/auth/login", json={"username": "alice", "password": "Hello12345"}
+        )
+    ).json()
     await client.request(
         "DELETE",
         "/api/auth/me",
