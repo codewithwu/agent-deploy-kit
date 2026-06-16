@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useRef,
   type ReactNode,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -42,8 +43,7 @@ interface AuthState {
 
 type Action =
   | { type: "set"; user: User }
-  | { type: "clear" }
-  | { type: "loading" };
+  | { type: "clear" };
 
 function reducer(_state: AuthState, action: Action): AuthState {
   switch (action.type) {
@@ -51,8 +51,6 @@ function reducer(_state: AuthState, action: Action): AuthState {
       return { status: "authenticated", user: action.user };
     case "clear":
       return { status: "anonymous", user: null };
-    case "loading":
-      return { status: "loading", user: null };
   }
 }
 
@@ -73,6 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { status: "loading", user: null });
   const navigate = useNavigate();
   const location = useLocation();
+  const fromRef = useRef<{ from?: { pathname?: string } } | null>(
+    location.state as { from?: { pathname?: string } } | null,
+  );
+  useEffect(() => {
+    fromRef.current = location.state as { from?: { pathname?: string } } | null;
+  }, [location.state]);
 
   // 启动:有 token 就 verify,恢复登录态
   useEffect(() => {
@@ -113,11 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const out = await authApi.login({ username: usernameOrEmail, password });
       tokenStorage.setTokens(out.access_token, out.refresh_token);
       dispatch({ type: "set", user: toUser(out.user) });
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from
-        ?.pathname;
-      navigate(from ?? "/", { replace: true });
+      const target = fromRef.current?.from?.pathname ?? "/";
+      navigate(target, { replace: true });
     },
-    [navigate, location.state],
+    [navigate],
   );
 
   const register = useCallback<AuthContextValue["register"]>(
