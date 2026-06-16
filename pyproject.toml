@@ -30,6 +30,7 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.11",
     "ipykernel==6.30.1",
+    "pytest-asyncio>=1.4.0",
 ]
 
 
@@ -40,3 +41,7 @@ package-dir = {"" = "."}
 where = ["."]
 include = ["agents*", "backend*"]
 exclude = ["jupyter*", "tests*"]
+
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
