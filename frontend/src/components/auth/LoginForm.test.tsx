@@ -7,7 +7,7 @@ import { AuthContext, type AuthContextValue } from "@/context/AuthContext";
 import { AuthApiError } from "@/lib/apiClient";
 
 function renderForm(loginImpl?: AuthContextValue["login"]) {
-  const login = vi.fn(loginImpl);
+  const login = vi.fn(loginImpl ?? (() => Promise.resolve()));
   const value: AuthContextValue = {
     status: "anonymous",
     user: null,
