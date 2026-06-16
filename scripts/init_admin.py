@@ -32,7 +32,10 @@ async def _upsert_admin(
     ).scalar_one_or_none()
     if existing is not None:
         if not force:
-            print(f"username {username!r} 已存在；用 --force 覆盖为 admin", file=sys.stderr)
+            print(
+                f"username {username!r} 已存在；用 --force 覆盖为 admin",
+                file=sys.stderr,
+            )
             sys.exit(2)
         existing.role = "admin"
         existing.is_active = True
