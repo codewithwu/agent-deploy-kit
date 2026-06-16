@@ -1,5 +1,6 @@
 """认证路由层：FastAPI 端点 + 限速 + 422→400 异常处理器。"""
 
+import json
 from collections import deque
 from datetime import datetime, timezone
 from typing import Annotated
@@ -54,10 +55,23 @@ async def validation_exception_handler(
     `app.add_exception_handler(RequestValidationError, validation_exception_handler)`
     注册到全局 app。
     """
+    # Pydantic v2 的 error dict 里 ctx.error 会保留原始 ValueError 实例，
+    # json.dumps 不能直接序列化；用 default=str 把不可序列化的值降级为字符串。
+    errors = json.loads(json.dumps(exc.errors(), default=str, ensure_ascii=False))
     return JSONResponse(
         status_code=400,
-        content={"detail": "参数错误", "errors": exc.errors()},
+        content={"detail": "参数错误", "errors": errors},
     )
+
+
+async def token_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """把 auth/security.TokenError 转 401（plan 约定）。
+
+    get_current_user 抛 TokenError（非 HTTPException），若无处理器会变 500。
+    模块级函数，由 main.py 通过
+    `app.add_exception_handler(security.TokenError, token_error_handler)` 注册。
+    """
+    return JSONResponse(status_code=401, content={"detail": "认证失败"})
 
 
 @router.post("/register", response_model=RegisterOut, status_code=201)

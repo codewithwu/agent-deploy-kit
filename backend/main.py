@@ -17,7 +17,12 @@ from starlette.types import ExceptionHandler
 from backend.agent_loader import get_agent
 from backend.auth.config import settings as auth_settings  # noqa: F401  启动期校验 JWT_SECRET
 from backend.auth.redis_client import close_redis, init_redis
-from backend.auth import router as auth_router, validation_exception_handler
+from backend.auth import (
+    router as auth_router,
+    token_error_handler,
+    validation_exception_handler,
+)
+from backend.auth import security
 from backend.schemas import ChatRequest, ChatResponse, HealthResponse
 
 logger = logging.getLogger(__name__)
@@ -77,6 +82,11 @@ app = FastAPI(title="Weather Agent API", version="0.1.0", lifespan=lifespan)
 app.add_exception_handler(
     RequestValidationError,
     cast(ExceptionHandler, validation_exception_handler),
+)
+# 把 auth/security.TokenError 转 401（get_current_user 抛出的鉴权失败）。
+app.add_exception_handler(
+    security.TokenError,
+    cast(ExceptionHandler, token_error_handler),
 )
 
 app.add_middleware(
