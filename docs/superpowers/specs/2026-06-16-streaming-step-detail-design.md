@@ -38,7 +38,8 @@
 ```ts
 import type { AssistantStep } from "@/types";
 
-/** 单行详情超过此字符数时截断;含后缀总长度不超过该值。 */
+/** 单行详情超过此字符数时截断到 `max` 字符 + `…(已截断)` 后缀。
+ *  实际输出长度 = max + 6 字符后缀。 */
 export const STEP_DETAIL_MAX_CHARS = 500;
 
 function truncate(s: string, max: number): string {
