@@ -6,6 +6,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { describeStep } from "@/lib/stepDescription";
+import { describeStepDetail } from "@/lib/stepDetail";
 import type { AssistantStep, ChatMessage } from "@/types";
 
 interface MessageBubbleProps {
@@ -56,6 +57,7 @@ function TaskListView({ steps }: { steps: AssistantStep[] }) {
         <ol className="flex flex-col gap-2">
           {steps.map((s, i) => {
             const isLast = i === steps.length - 1;
+            const detail = describeStepDetail(s);
             return (
               <li
                 key={i}
@@ -72,7 +74,16 @@ function TaskListView({ steps }: { steps: AssistantStep[] }) {
                 {i < steps.length - 1 && (
                   <span className="absolute left-[3.5px] top-4 h-[calc(100%+0.5rem)] w-px bg-border" />
                 )}
-                {describeStep(s)}
+                <div>{describeStep(s)}</div>
+                {detail?.map((line, j) => (
+                  <div
+                    key={j}
+                    data-testid="step-detail"
+                    className="mt-0.5 whitespace-pre-wrap break-all text-xs text-muted-foreground/80"
+                  >
+                    {line}
+                  </div>
+                ))}
               </li>
             );
           })}

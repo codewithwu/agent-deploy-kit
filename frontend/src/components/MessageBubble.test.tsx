@@ -137,4 +137,30 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: /重试/i })).toBeInTheDocument();
     expect(screen.queryByTestId("task-list")).toBeNull();
   });
+
+  it("renders step detail below description for model+tool_call", () => {
+    const message: ChatMessage = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+      pending: true,
+      steps: [
+        {
+          name: "model",
+          blocks: [
+            {
+              type: "tool_call",
+              name: "get_weather",
+              args: { city: "San Francisco" },
+            },
+          ],
+        },
+      ],
+    };
+    render(<MessageBubble message={message} />);
+    expect(screen.getByTestId("step-detail")).toHaveTextContent(
+      "city: San Francisco",
+    );
+  });
 });
