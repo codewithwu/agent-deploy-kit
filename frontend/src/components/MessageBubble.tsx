@@ -41,6 +41,20 @@ function ThinkingView() {
 
 /** 任务列表视图:运行中的 assistant 消息。 */
 function TaskListView({ steps }: { steps: AssistantStep[] }) {
+  if (typeof window !== "undefined") {
+    setTimeout(() => {
+      const ol = document.querySelector('[data-testid="task-list"] ol');
+      const lis = document.querySelectorAll('[data-testid="task-list"] li');
+      const details = document.querySelectorAll('[data-testid="step-detail"]');
+      console.log("[TASK-LIST INNER]", JSON.stringify({
+        olCount: ol ? 1 : 0,
+        olBbox: ol ? ol.getBoundingClientRect() : null,
+        liCount: lis.length,
+        liBboxes: Array.from(lis).map(li => li.getBoundingClientRect()),
+        detailCount: details.length,
+      }));
+    }, 0);
+  }
   return (
     <div
       className="flex items-start gap-2"
