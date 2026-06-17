@@ -41,30 +41,12 @@ const thinkingAssistantMsg: ChatMessage = {
   pending: true,
 };
 
-const runningAssistantMsg: ChatMessage = {
-  id: "r1",
-  role: "assistant",
-  content: "调用工具: get_weather({})",
-  createdAt: 1,
-  pending: true,
-  steps: [
-    { name: "model", blocks: [{ type: "tool_call", name: "get_weather", args: {} }] },
-    { name: "tools", blocks: [{ type: "text", text: "sunny" }] },
-    { name: "model", blocks: [{ type: "text", text: "正在准备最终回复" }] },
-  ],
-};
-
 const doneAssistantMsg: ChatMessage = {
   id: "d1",
   role: "assistant",
   content: "It's **sunny** today.",
   createdAt: 1,
   pending: false,
-  steps: [
-    { name: "model", blocks: [{ type: "tool_call", name: "get_weather", args: {} }] },
-    { name: "tools", blocks: [{ type: "text", text: "sunny" }] },
-    { name: "model", blocks: [{ type: "text", text: "It's sunny today." }] },
-  ],
 };
 
 const errorAssistantMsg: ChatMessage = {
@@ -74,7 +56,6 @@ const errorAssistantMsg: ChatMessage = {
   createdAt: 1,
   error: true,
   pending: false,
-  steps: [{ name: "model", blocks: [{ type: "text", text: "partial answer" }] }],
 };
 
 describe("MessageBubble", () => {
@@ -109,18 +90,10 @@ describe("MessageBubble", () => {
     expect(screen.getByText("...")).toBeInTheDocument();
   });
 
-  it("renders thinking indicator for pending assistant message without steps", () => {
+  it("renders thinking indicator for pending assistant with empty content", () => {
     const { container } = render(<MessageBubble message={thinkingAssistantMsg} />);
     expect(container.querySelector('[data-testid="thinking-indicator"]')).not.toBeNull();
     expect(screen.queryByTestId("task-list")).toBeNull();
-    expect(screen.getByText(/智能体 正在回复/)).toBeInTheDocument();
-  });
-
-  it("renders task list when assistant message has steps and is pending", () => {
-    const { container } = render(<MessageBubble message={runningAssistantMsg} />);
-    expect(container.querySelector('[data-testid="task-list"]')).not.toBeNull();
-    expect(screen.getByText("正在准备调用 get_weather…")).toBeInTheDocument();
-    expect(screen.getByText("正在生成回复…")).toBeInTheDocument();
     expect(screen.getByText(/智能体 正在回复/)).toBeInTheDocument();
   });
 
@@ -138,29 +111,27 @@ describe("MessageBubble", () => {
     expect(screen.queryByTestId("task-list")).toBeNull();
   });
 
-  it("renders step detail below description for model+tool_call", () => {
+  it("renders streaming content with 正在回复 indicator for pending assistant with text", () => {
     const message: ChatMessage = {
       id: "a1",
       role: "assistant",
-      content: "",
-      createdAt: Date.now(),
+      content: "Hello there",
+      createdAt: 1,
       pending: true,
-      steps: [
-        {
-          name: "model",
-          blocks: [
-            {
-              type: "tool_call",
-              name: "get_weather",
-              args: { city: "San Francisco" },
-            },
-          ],
-        },
-      ],
     };
-    render(<MessageBubble message={message} />);
-    expect(screen.getByTestId("step-detail")).toHaveTextContent(
-      "city: San Francisco",
-    );
+    const { container } = render(<MessageBubble message={message} />);
+    // 顶部 loader
+    expect(container.querySelector('[data-testid="thinking-indicator"]')).not.toBeNull();
+    expect(screen.getByText(/智能体 正在回复/)).toBeInTheDocument();
+    // 累积的 content 用纯文本展示(无 markdown 处理,** 不会被解析为 strong)
+    expect(screen.getByText("Hello there")).toBeInTheDocument();
+    expect(container.querySelector("strong")).toBeNull();
+  });
+
+  it("hides content area for pending assistant with empty content", () => {
+    const { container } = render(<MessageBubble message={thinkingAssistantMsg} />);
+    // 仅顶部 loader,无内容区(由 {message.content && ...} 守门)
+    expect(container.querySelector('[data-testid="thinking-indicator"]')).not.toBeNull();
+    expect(container.querySelector("div.whitespace-pre-wrap")).toBeNull();
   });
 });
