@@ -12,7 +12,7 @@ export interface ChatMessage {
   /** 客户端生成,用于 React key 与重试定位 */
   id: string;
   role: Role;
-  /** Markdown 文本。assistant 上等于"最后一个含 text 的 step"的拼接文本;无 text 时为该 step 的 tool_call 摘要。 */
+  /** Markdown 文本。assistant 上等于所有 step 文本块按时间顺序用 "\n\n" 拼接。 */
   content: string;
   /** Date.now() */
   createdAt: number;
@@ -20,8 +20,6 @@ export interface ChatMessage {
   pending?: boolean;
   /** 请求失败标记,支持重试 */
   error?: boolean;
-  /** assistant 专用:本轮所有 step。第一次 step 事件后即存在,旧消息无此字段视为非流式。 */
-  steps?: AssistantStep[];
 }
 
 export interface Conversation {
