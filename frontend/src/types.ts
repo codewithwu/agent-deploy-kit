@@ -1,13 +1,5 @@
 export type Role = "user" | "assistant";
 
-/** 单个 SSE step 的原始数据(从前端视角聚合)。 */
-export interface AssistantStep {
-  /** LangChain step 名,如 "model" / "tools" */
-  name: string;
-  /** 该 step 的原始 content blocks */
-  blocks: Array<Record<string, unknown>>;
-}
-
 export interface ChatMessage {
   /** 客户端生成,用于 React key 与重试定位 */
   id: string;
