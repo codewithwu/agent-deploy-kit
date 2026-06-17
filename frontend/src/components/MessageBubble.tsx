@@ -5,9 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { describeStep } from "@/lib/stepDescription";
-import { describeStepDetail } from "@/lib/stepDetail";
-import type { AssistantStep, ChatMessage } from "@/types";
+import type { ChatMessage } from "@/types";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -18,93 +16,6 @@ interface MessageBubbleProps {
 function safeUrl(url: string): string | null {
   if (/^(https?:|mailto:)/i.test(url)) return url;
   return null;
-}
-
-/** 思考中视图:assistant 消息已挂起但首个 step 尚未到达。 */
-function ThinkingView() {
-  return (
-    <div
-      className="flex items-start gap-2"
-      data-testid="thinking-indicator"
-    >
-      <div
-        className="mt-1 h-7 w-7 shrink-0 rounded-full bg-muted"
-        aria-hidden
-      />
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-        <span>智能体 正在回复…</span>
-      </div>
-    </div>
-  );
-}
-
-/** 任务列表视图:运行中的 assistant 消息。 */
-function TaskListView({ steps }: { steps: AssistantStep[] }) {
-  if (typeof window !== "undefined") {
-    setTimeout(() => {
-      const ol = document.querySelector('[data-testid="task-list"] ol');
-      const lis = document.querySelectorAll('[data-testid="task-list"] li');
-      const details = document.querySelectorAll('[data-testid="step-detail"]');
-      console.log("[TASK-LIST INNER]", JSON.stringify({
-        olCount: ol ? 1 : 0,
-        olBbox: ol ? ol.getBoundingClientRect() : null,
-        liCount: lis.length,
-        liBboxes: Array.from(lis).map(li => li.getBoundingClientRect()),
-        detailCount: details.length,
-      }));
-    }, 0);
-  }
-  return (
-    <div
-      className="flex items-start gap-2"
-      data-testid="task-list"
-    >
-      <div
-        className="mt-1 h-7 w-7 shrink-0 rounded-full bg-muted"
-        aria-hidden
-      />
-      <div className="flex flex-col">
-        <div className="mb-2 text-xs text-muted-foreground">
-          智能体 正在回复…
-        </div>
-        <ol className="flex flex-col gap-2">
-          {steps.map((s, i) => {
-            const isLast = i === steps.length - 1;
-            const detail = describeStepDetail(s);
-            return (
-              <li
-                key={i}
-                className="relative pl-5 text-sm leading-relaxed"
-              >
-                <span
-                  className={cn(
-                    "absolute left-0 top-1.5 inline-block h-2 w-2 rounded-full",
-                    isLast
-                      ? "border border-muted-foreground bg-background animate-pulse"
-                      : "bg-foreground",
-                  )}
-                />
-                {i < steps.length - 1 && (
-                  <span className="absolute left-[3.5px] top-4 h-[calc(100%+0.5rem)] w-px bg-border" />
-                )}
-                <div>{describeStep(s)}</div>
-                {detail?.map((line, j) => (
-                  <div
-                    key={j}
-                    data-testid="step-detail"
-                    className="mt-0.5 whitespace-pre-wrap break-all text-xs text-muted-foreground/80"
-                  >
-                    {line}
-                  </div>
-                ))}
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </div>
-  );
 }
 
 /** 最终答案视图:已完成 assistant 消息的 markdown 气泡。 */
@@ -229,29 +140,26 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
     );
   }
 
-  // Assistant 思考中:首个 step 尚未到达,显示 loading 动效
-  if (message.pending && !message.steps) {
+  // Assistant 思考中或累积中:顶部 loader + 累积 content(纯文本,不用 markdown)
+  if (message.pending) {
     return (
       <div
         className="flex w-full justify-start"
         data-testid={`message-${message.role}`}
       >
-        <div className="max-w-[80%] text-sm">
-          <ThinkingView />
-        </div>
-      </div>
-    );
-  }
-
-  // Assistant 运行中:任务列表视图
-  if (message.steps && message.pending) {
-    return (
-      <div
-        className="flex w-full justify-start"
-        data-testid={`message-${message.role}`}
-      >
-        <div className="max-w-[80%] text-sm">
-          <TaskListView steps={message.steps} />
+        <div
+          className="max-w-[80%] rounded-lg border border-border bg-card px-4 py-2 text-sm shadow-sm"
+          data-testid="thinking-indicator"
+        >
+          <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            <span>智能体 正在回复…</span>
+          </div>
+          {message.content && (
+            <div className="whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     );
