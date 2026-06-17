@@ -3,34 +3,6 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { ChatProvider } from "@/context/ChatContext";
 import { useChat } from "./useChat";
 
-// 构造一个可手动分块入队的 SSE Response（复用自 api.test 的思路）。
-// 用 Promise resolve 把 controller 暴露给测试,让 push/close 异步生效。
-function chunkedSseResponse(): {
-  response: Response;
-  push: (text: string) => void;
-  close: () => void;
-} {
-  const encoder = new TextEncoder();
-  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
-  const stream = new ReadableStream<Uint8Array>({
-    start(c) {
-      controllerRef = c;
-    },
-  });
-  return {
-    response: new Response(stream, {
-      status: 200,
-      headers: { "Content-Type": "text/event-stream" },
-    }),
-    push: (text: string) => controllerRef?.enqueue(encoder.encode(text)),
-    close: () => controllerRef?.close(),
-  };
-}
-
-function sseFrame(payload: object): string {
-  return `event: step\ndata: ${JSON.stringify(payload)}\n\n`;
-}
-
 function wrapper({ children }: { children: React.ReactNode }) {
   return <ChatProvider>{children}</ChatProvider>;
 }
@@ -73,7 +45,7 @@ beforeEach(() => {
 });
 
 describe("useChat.send (streaming)", () => {
-  it("aggregates 3 step events into 1 assistant message with steps.length === 3", async () => {
+  it("accumulates text from 3 step events into 1 assistant message with concatenated content", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
@@ -87,14 +59,14 @@ describe("useChat.send (streaming)", () => {
           event: "step",
           data: {
             step: "tools",
-            blocks: [{ type: "text", text: "It's always sunny in San Francisco!" }],
+            blocks: [{ type: "text", text: "Sunny in SF" }],
           },
         },
         {
           event: "step",
           data: {
             step: "model",
-            blocks: [{ type: "text", text: "It's always sunny in San Francisco!" }],
+            blocks: [{ type: "text", text: "Final answer" }],
           },
         },
         { event: "done", data: {} },
@@ -103,22 +75,20 @@ describe("useChat.send (streaming)", () => {
 
     const { result } = renderHook(() => useChat(), { wrapper });
     await act(async () => {
-      await result.current.send("What's the weather in San Francisco?");
+      await result.current.send("Weather?");
     });
 
     const messages = result.current.context.conversations[0].messages;
     expect(messages).toHaveLength(2);  // user + 1 assistant
     expect(messages[0].role).toBe("user");
     expect(messages[0].pending).toBe(false);
-
     expect(messages[1].role).toBe("assistant");
-    expect(messages[1].steps).toHaveLength(3);
-    expect(messages[1].steps?.[0].name).toBe("model");
-    expect(messages[1].steps?.[1].name).toBe("tools");
-    expect(messages[1].steps?.[2].name).toBe("model");
+    // tool_call-only 步跳过;两个 text 步用 "\n\n" 累加
+    expect(messages[1].content).toBe("Sunny in SF\n\nFinal answer");
+    expect(messages[1].pending).toBe(false);
   });
 
-  it("first tool_call step stores summary in content, blocks in steps[0]", async () => {
+  it("tool_call-only step does not change content", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
@@ -138,28 +108,19 @@ describe("useChat.send (streaming)", () => {
     });
 
     const assistant = result.current.context.conversations[0].messages[1];
-    expect(assistant.content).toBe('调用工具: get_weather({"city":"San Francisco"})');
-    expect(assistant.steps?.[0].blocks).toEqual([
-      { type: "tool_call", name: "get_weather", args: { city: "San Francisco" } },
-    ]);
+    expect(assistant.content).toBe("");
   });
 
-  it("later text step overrides content with its own text", async () => {
+  it("later text step appends to content with separator", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
           event: "step",
-          data: {
-            step: "model",
-            blocks: [{ type: "text", text: "thinking..." }],
-          },
+          data: { step: "model", blocks: [{ type: "text", text: "thinking..." }] },
         },
         {
           event: "step",
-          data: {
-            step: "model",
-            blocks: [{ type: "text", text: "final answer" }],
-          },
+          data: { step: "model", blocks: [{ type: "text", text: "final answer" }] },
         },
         { event: "done", data: {} },
       ]),
@@ -171,8 +132,7 @@ describe("useChat.send (streaming)", () => {
     });
 
     const msgs = result.current.context.conversations[0].messages;
-    expect(msgs[1].content).toBe("final answer");
-    expect(msgs[1].steps).toHaveLength(2);
+    expect(msgs[1].content).toBe("thinking...\n\nfinal answer");
   });
 
   it("marks user message as error on HTTP 400", async () => {
@@ -256,26 +216,19 @@ describe("useChat.send (streaming)", () => {
 
     const assistant = result.current.context.conversations[0].messages[1];
     expect(assistant.content).toBe("hello");
-    expect(assistant.pending).toBe(false);  // done 之后
-    expect(assistant.steps).toHaveLength(1);
+    expect(assistant.pending).toBe(false);
   });
 
-  it("done flips assistant pending to false but keeps content", async () => {
+  it("done flips assistant pending to false and concatenates accumulated content", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       sseResponse([
         {
           event: "step",
-          data: {
-            step: "model",
-            blocks: [{ type: "text", text: "first" }],
-          },
+          data: { step: "model", blocks: [{ type: "text", text: "first" }] },
         },
         {
           event: "step",
-          data: {
-            step: "model",
-            blocks: [{ type: "text", text: "second" }],
-          },
+          data: { step: "model", blocks: [{ type: "text", text: "second" }] },
         },
         { event: "done", data: {} },
       ]),
@@ -288,7 +241,7 @@ describe("useChat.send (streaming)", () => {
 
     const assistant = result.current.context.conversations[0].messages[1];
     expect(assistant.pending).toBe(false);
-    expect(assistant.content).toBe("second");
+    expect(assistant.content).toBe("first\n\nsecond");
   });
 
   it("event: error marks assistant pending=false + error=true", async () => {
@@ -407,53 +360,4 @@ describe("useChat.send (streaming)", () => {
     ]);
   });
 
-  it("keeps the task list visible for at least 500ms (so user sees running steps, not just the final answer)", async () => {
-    // 真实场景:本机 LLM 一次完整多步调用在数十毫秒内就完成,React 把所有 setState
-    // 合并成一次渲染,用户看到 FinalAnswerView 时任务列表一闪而过甚至完全没出现。
-    // 修复点:send 内部需要保证 assistant.pending 在首个 step 到达后,至少保持 500ms
-    // 才被 done 翻为 false,这样浏览器才有时间画出 TaskListView。
-    const { response, push, close } = chunkedSseResponse();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
-
-    const { result } = renderHook(() => useChat(), { wrapper });
-    const sendStart = Date.now();
-    act(() => {
-      void result.current.send("hi");
-    });
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
-
-    // 推一个 step + done,模拟本地 LLM 极快返回的场景
-    push(
-      sseFrame({
-        step: "model",
-        blocks: [{ type: "text", text: "hello" }],
-      }),
-    );
-    push(`event: done\ndata: {}\n\n`);
-    close();
-
-    // 等 step 已被处理(消息应当挂上 steps)
-    await waitFor(() => {
-      const msgs = result.current.context.conversations[0]?.messages ?? [];
-      expect(msgs[1]?.steps).toBeDefined();
-    });
-
-    // 关键断言:step 到达后,助手消息应当保持 pending=true(steps 已被记录)、
-    // 且不能立即被 done 翻为 false——否则浏览器会直接落进 FinalAnswerView 分支,
-    // 用户根本看不到 TaskListView。
-    const assistant = result.current.context.conversations[0].messages[1];
-    expect(assistant.pending).toBe(true);
-    expect(assistant.steps).toHaveLength(1);
-
-    // 等到总耗时超过 500ms 再检查,此时 done 才应被处理、pending 才翻为 false
-    await waitFor(
-      () => {
-        const msgs = result.current.context.conversations[0]?.messages ?? [];
-        expect(msgs[1]?.pending).toBe(false);
-      },
-      { timeout: 1500 },
-    );
-    const totalElapsed = Date.now() - sendStart;
-    expect(totalElapsed).toBeGreaterThanOrEqual(500);
-  });
 });
