@@ -69,8 +69,8 @@ src/context/*  src/components/*
   - `AuthState.user` 类型改为 `UserOut | null`。
   - `login` / `verify` / 后续 proactive refresh 成功后，`dispatch({ type: 'set', user: out.user })` 直接持有后端形状。
   - `AuthApiError` → `ApiError`。
-  - 新增 proactive refresh（详见 §数据流）。
-  - `authEvents` 监听逻辑、401 失败后的清理路径保留。
+  - 新增 proactive refresh（详见 §数据流）：内部用 `useRef<ReturnType<typeof setTimeout> | null>` 持有 timer handle；`scheduleNextRefresh(expiresIn)` 私有函数封装 `clearTimeout` + `setTimeout`；effect 依赖 `[state.status]`，cleanup 清 timer。
+  - `authEvents` 监听逻辑、401 失败后的清理路径保留（监听 `logout` 事件的 effect 保持不变，由它在 tokenStorage 已清后做 dispatch + navigate）。
 
 - `src/lib/tokenStorage.ts`：
   - 新增 `setExpiresIn(seconds: number)`：写 `localStorage['adk:expires_at:v1'] = Date.now() + seconds * 1000`。
@@ -97,25 +97,28 @@ AuthContext 在三种入口成功后调度下一次 refresh：
     ↓
 tokenStorage.setExpiresIn(expires_in)
     ↓
-scheduleNextRefresh()：clearTimeout(oldTimer); timer = setTimeout(refresh, (expires_in - 60) * 1000)
+scheduleNextRefresh()：
+  refreshTimerRef.current = setTimeout(refresh, (expires_in - 60) * 1000)
     ↓
 timer 触发 → authApi.refresh() 走 apiClient (auth='refresh')
     ↓
 成功：setTokens + setExpiresIn + scheduleNextRefresh（递归）
-失败：apiClient 抛 ApiError → AuthContext catch → clearTokens + clearExpiresIn + emit logout
+失败：apiClient 内部已 tokenStorage.clear() + authEvents.emit('logout')，
+      AuthContext catch 时只需 clearTimeout，状态由监听 logout 的 effect 处理
 ```
 
 约束：
 
 - `apiClient` 的 401-retry 单例（`let refreshing = null`）与 AuthContext 的定时 refresh 互不冲突：定时 refresh 调 `apiFetch('/api/auth/refresh', { auth: 'refresh' })`，`apiFetch` 行 91 的 `if (res.status !== 401 || auth !== 'access')` 守门确保 `auth === 'refresh'` 不进入重试分支。
 - 跨刷新页面：`AuthProvider` 挂载时若 `tokenStorage.getAccess()` 存在，verify 成功后从响应里的 `expires_in` 调度 timer；无需单独持久化 timer handle。
-- effect cleanup：组件卸载 / `state.status` 变化（非 authenticated）时 `clearTimeout(timer)`。
+- effect cleanup：组件卸载 / `state.status` 变化（非 authenticated）时 `clearTimeout(refreshTimerRef.current)`。
+- `refreshTimerRef.current` 初始化为 `null`，每次 schedule 前先 clearTimeout 旧值，避免重叠 timer。
 
 清理路径：
 
-- `logout`：`tokenStorage.clear()`（含 clearExpiresIn） + clearTimeout + dispatch clear + 跳 /login。
+- `logout`：`tokenStorage.clear()`（含 clearExpiresIn，clear() 内已含）+ clearTimeout(refreshTimerRef.current) + dispatch clear + 跳 /login。**不** emit 'logout'（主动 logout 与被动失效语义不同，由 logout() 自己直接清理）。
 - `deleteAccount`：同上 + 跳 /login?deleted=1。
-- refresh 失败：捕获 ApiError → 走现有 `authEvents.emit('logout')` 路径（apiClient 已实现），AuthContext 监听 `logout` 事件时已包含清理。
+- 定时 refresh 失败：apiClient 内部已 `tokenStorage.clear()` + `authEvents.emit('logout')`。AuthContext 的 timer 回调 catch ApiError 后只需 `clearTimeout(refreshTimerRef.current)` 与重置 ref；tokenStorage 与 dispatch 由监听 `logout` 事件的 effect 统一处理。
 
 ## 测试策略
 
