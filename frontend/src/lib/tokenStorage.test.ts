@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { tokenStorage } from "./tokenStorage";
 
 beforeEach(() => {
   localStorage.clear();
+  vi.useRealTimers();
 });
 
 describe("tokenStorage", () => {
@@ -27,5 +28,32 @@ describe("tokenStorage", () => {
   it("tolerates a corrupted localStorage value", () => {
     localStorage.setItem("adk:access_token:v1", "");
     expect(tokenStorage.getAccess()).toBeNull();
+  });
+});
+
+describe("expires_in persistence", () => {
+  it("returns null when no expires_at stored", () => {
+    expect(tokenStorage.getExpiresAt()).toBeNull();
+  });
+
+  it("setExpiresIn stores an absolute timestamp ~now+seconds*1000", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-19T10:00:00Z"));
+    tokenStorage.setExpiresIn(900);
+    expect(tokenStorage.getExpiresAt()).toBe(
+      new Date("2026-06-19T10:15:00Z").getTime(),
+    );
+  });
+
+  it("clearExpiresIn removes the stored value", () => {
+    tokenStorage.setExpiresIn(900);
+    tokenStorage.clearExpiresIn();
+    expect(tokenStorage.getExpiresAt()).toBeNull();
+  });
+
+  it("clear() also clears expires_at", () => {
+    tokenStorage.setExpiresIn(900);
+    tokenStorage.clear();
+    expect(tokenStorage.getExpiresAt()).toBeNull();
   });
 });
