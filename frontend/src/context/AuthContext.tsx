@@ -55,9 +55,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fromRef = useRef<{ from?: { pathname?: string } } | null>(
     location.state as { from?: { pathname?: string } } | null,
   );
+  // 提前 60s 主动 refresh 的 timer 句柄
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     fromRef.current = location.state as { from?: { pathname?: string } } | null;
   }, [location.state]);
+
+  // 调度下一次主动 refresh。expiresIn 是 access token 的有效秒数,提前 60s 触发。
+  const scheduleNextRefresh = useCallback((expiresInSeconds: number) => {
+    if (refreshTimerRef.current !== null) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    const ttl = Math.max(0, (expiresInSeconds - 60) * 1000);
+    refreshTimerRef.current = setTimeout(() => {
+      void doProactiveRefresh();
+    }, ttl);
+  }, []);
+
+  // 执行主动 refresh。失败时由 apiClient 内部 emit('logout'),由下方 effect 统一清理。
+  const doProactiveRefresh = useCallback(async () => {
+    refreshTimerRef.current = null;
+    try {
+      const pair = await authApi.refresh();
+      tokenStorage.setTokens(pair.access_token, pair.refresh_token);
+      tokenStorage.setExpiresIn(pair.expires_in);
+      scheduleNextRefresh(pair.expires_in);
+    } catch {
+      // 静默:apiClient 已在 refresh 失败时 tokenStorage.clear() + emit('logout'),
+      // AuthContext 监听 logout 事件的 effect 负责 dispatch + navigate
+    }
+  }, [scheduleNextRefresh]);
+
+  // 组件卸载时清理 timer
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // 启动:有 token 就 verify,恢复登录态
   useEffect(() => {
@@ -69,7 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const { user } = await authApi.verify();
-        if (!cancelled) dispatch({ type: "set", user });
+        if (cancelled) return;
+        dispatch({ type: "set", user });
+        // 从持久化的 expires_at 恢复 timer(verify 响应本身不返回 expires_in)
+        const expiresAt = tokenStorage.getExpiresAt();
+        if (expiresAt && expiresAt > Date.now()) {
+          const remainingSeconds = Math.ceil((expiresAt - Date.now()) / 1000);
+          scheduleNextRefresh(remainingSeconds);
+        }
       } catch (e) {
         if (cancelled) return;
         if (e instanceof ApiError && e.status === 401) {
@@ -81,11 +126,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scheduleNextRefresh]);
 
   // 监听 apiClient 触发的 logout(refresh 失败)
   useEffect(() => {
     const off = authEvents.on("logout", () => {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       tokenStorage.clear();
       dispatch({ type: "clear" });
       navigate("/login", { replace: true });
@@ -97,11 +146,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (usernameOrEmail, password) => {
       const out = await authApi.login({ username: usernameOrEmail, password });
       tokenStorage.setTokens(out.access_token, out.refresh_token);
+      tokenStorage.setExpiresIn(out.expires_in);
       dispatch({ type: "set", user: out.user });
+      scheduleNextRefresh(out.expires_in);
       const target = fromRef.current?.from?.pathname ?? "/";
       navigate(target, { replace: true });
     },
-    [navigate],
+    [navigate, scheduleNextRefresh],
   );
 
   const register = useCallback<AuthContextValue["register"]>(
@@ -114,6 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback<AuthContextValue["logout"]>(async () => {
+    if (refreshTimerRef.current !== null) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
     try {
       await authApi.logout();
     } catch {
@@ -136,6 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const deleteAccount = useCallback<AuthContextValue["deleteAccount"]>(
     async (password) => {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       await authApi.deleteMe({ password });
       tokenStorage.clear();
       dispatch({ type: "clear" });
