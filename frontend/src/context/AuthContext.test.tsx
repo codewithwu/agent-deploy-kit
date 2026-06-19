@@ -95,10 +95,17 @@ function renderWithRouter(initial: string[] = ["/"]) {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  vi.useRealTimers();
   mockedAuthApi.verify.mockResolvedValue({ valid: true, user: userStub });
   mockedAuthApi.login.mockResolvedValue(loginStub);
   mockedAuthApi.logout.mockResolvedValue(undefined);
   mockedAuthApi.deleteMe.mockResolvedValue(undefined);
+  mockedAuthApi.refresh.mockResolvedValue({
+    access_token: "a2",
+    refresh_token: "r2",
+    token_type: "bearer",
+    expires_in: 900,
+  });
 });
 
 describe("AuthProvider", () => {
@@ -185,5 +192,91 @@ describe("AuthProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("anonymous"));
     expect(tokenStorage.getAccess()).toBeNull();
+  });
+});
+
+describe("proactive refresh", () => {
+  beforeEach(() => {
+    // 全程 fake timers;用 act 推进 React 状态,而不是 waitFor (后者依赖真实 setTimeout)
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // 辅助:登录并等待 status 切到 authenticated
+  async function loginAndAuthenticate() {
+    renderWithRouter();
+    // 让 verify 副作用清空
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("status").textContent).toBe("anonymous");
+
+    await act(async () => {
+      screen.getByText("do-login").click();
+      // flush login async chain
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("status").textContent).toBe("authenticated");
+  }
+
+  it("schedules a refresh (expires_in - 60)s after login", async () => {
+    await loginAndAuthenticate();
+    expect(mockedAuthApi.refresh).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(840 * 1000);
+    });
+    expect(mockedAuthApi.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the refresh timer on logout", async () => {
+    tokenStorage.setTokens("a", "r");
+    tokenStorage.setExpiresIn(900);
+    renderWithRouter();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("status").textContent).toBe("authenticated");
+
+    await act(async () => {
+      screen.getByText("do-logout").click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("status").textContent).toBe("anonymous");
+
+    await act(async () => {
+      vi.advanceTimersByTime(60 * 60 * 1000);
+    });
+    expect(mockedAuthApi.refresh).not.toHaveBeenCalled();
+  });
+
+  it("reschedules the timer after a successful refresh", async () => {
+    await loginAndAuthenticate();
+
+    // 第一次 timer 触发 → refresh 成功 → 重新调度
+    await act(async () => {
+      vi.advanceTimersByTime(840 * 1000);
+    });
+    expect(mockedAuthApi.refresh).toHaveBeenCalledTimes(1);
+
+    // 再推进 840s,第二次 refresh 应被触发
+    await act(async () => {
+      vi.advanceTimersByTime(840 * 1000);
+    });
+    expect(mockedAuthApi.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not throw if scheduled refresh fails (authEvents handles logout)", async () => {
+    mockedAuthApi.refresh.mockRejectedValueOnce(new Error("network"));
+    await loginAndAuthenticate();
+
+    // 主要断言:advanceTimersByTime 不应抛错(refresh 失败时 catch 静默)
+    expect(() =>
+      act(() => {
+        vi.advanceTimersByTime(840 * 1000);
+      }),
+    ).not.toThrow();
   });
 });
