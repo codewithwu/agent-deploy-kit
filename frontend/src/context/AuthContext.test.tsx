@@ -123,8 +123,8 @@ describe("AuthProvider", () => {
 
   it("clears tokens and goes anonymous on verify 401", async () => {
     tokenStorage.setTokens("a", "r");
-    const { AuthApiError } = await import("@/lib/apiClient");
-    mockedAuthApi.verify.mockRejectedValueOnce(new AuthApiError(401, "认证失败"));
+    const { ApiError } = await import("@/lib/apiClient");
+    mockedAuthApi.verify.mockRejectedValueOnce(new ApiError(401, "认证失败"));
 
     renderWithRouter();
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("anonymous"));

@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/context/AuthContext"
-import { AuthApiError } from "@/lib/apiClient"
+import { ApiError } from "@/lib/apiClient"
 
 type DeleteAccountDialogProps = {
   open: boolean
@@ -37,7 +37,7 @@ export function DeleteAccountDialog({
       await deleteAccount(password)
       // AuthContext 跳 /login
     } catch (e) {
-      setError(e instanceof AuthApiError ? e.detail : "注销失败,请稍后重试")
+      setError(e instanceof ApiError ? e.detail : "注销失败,请稍后重试")
       setPending(false)
     }
   }

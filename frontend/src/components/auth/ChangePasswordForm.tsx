@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/context/AuthContext"
-import { AuthApiError } from "@/lib/apiClient"
+import { ApiError } from "@/lib/apiClient"
 
 export function ChangePasswordForm() {
   const { changePassword } = useAuth()
@@ -36,7 +36,7 @@ export function ChangePasswordForm() {
       setNew("")
       setConfirm("")
     } catch (e) {
-      setError(e instanceof AuthApiError ? e.detail : "修改失败,请稍后重试")
+      setError(e instanceof ApiError ? e.detail : "修改失败,请稍后重试")
     } finally {
       setPending(false)
     }

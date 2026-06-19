@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { RegisterForm } from "./RegisterForm"
 import { AuthContext, type AuthContextValue } from "@/context/AuthContext"
-import { AuthApiError } from "@/lib/apiClient"
+import { ApiError } from "@/lib/apiClient"
 
 function renderForm(registerImpl?: AuthContextValue["register"]) {
   const register = vi.fn(registerImpl ?? (() => Promise.resolve()))
@@ -73,7 +73,7 @@ describe("RegisterForm", () => {
   it("displays backend field error on username", async () => {
     const user = userEvent.setup()
     renderForm(async () => {
-      throw new AuthApiError(400, "参数错误", [
+      throw new ApiError(400, "参数错误", [
         { loc: ["body", "username"], msg: "用户名格式不合法" },
       ])
     })

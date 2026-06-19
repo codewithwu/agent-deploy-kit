@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { LoginForm } from "./LoginForm";
 import { AuthContext, type AuthContextValue } from "@/context/AuthContext";
-import { AuthApiError } from "@/lib/apiClient";
+import { ApiError } from "@/lib/apiClient";
 
 function renderForm(loginImpl?: AuthContextValue["login"]) {
   const login = vi.fn(loginImpl ?? (() => Promise.resolve()));
@@ -45,7 +45,7 @@ describe("LoginForm", () => {
   it("displays backend error detail", async () => {
     const user = userEvent.setup();
     renderForm(async () => {
-      throw new AuthApiError(401, "用户名或密码错误");
+      throw new ApiError(401, "用户名或密码错误");
     });
     await user.type(screen.getByLabelText(/用户名或邮箱/), "alice");
     await user.type(screen.getByLabelText(/密码/), "wrong");

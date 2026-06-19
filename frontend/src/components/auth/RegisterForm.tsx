@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/context/AuthContext"
-import { AuthApiError } from "@/lib/apiClient"
+import { ApiError } from "@/lib/apiClient"
 
 interface FieldErrors {
   username?: string
@@ -16,7 +16,7 @@ interface FieldErrors {
 }
 
 function pickFieldError(
-  err: AuthApiError,
+  err: ApiError,
   field: "username" | "email" | "password",
 ): string | undefined {
   if (!err.fieldErrors) return undefined
@@ -53,7 +53,7 @@ export function RegisterForm() {
     try {
       await register(username, email, password)
     } catch (e) {
-      if (e instanceof AuthApiError) {
+      if (e instanceof ApiError) {
         setErrors({
           username: pickFieldError(e, "username"),
           email: pickFieldError(e, "email"),

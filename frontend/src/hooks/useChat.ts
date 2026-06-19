@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatApiError, streamChat } from "@/lib/api";
+import { ApiError, streamChat } from "@/lib/api";
 import { useChatContext } from "@/context/ChatContext";
 import { extractText } from "@/lib/stepContent";
 import type { ChatMessage } from "@/types";
@@ -20,7 +20,7 @@ function toastError(msg: string): void {
 
 // 把任意异常翻译成展示给用户的 toast 文案
 function toastMessage(err: unknown, fallbackDetail: string): string {
-  if (err instanceof ChatApiError) {
+  if (err instanceof ApiError) {
     if (err.status === 400) return err.message || "消息不能为空";
     if (err.status >= 500) return "智能体暂时不可用";
     return err.message || fallbackDetail;
