@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { AuthContext, type AuthContextValue } from "@/context/AuthContext";
-import { AuthApiError } from "@/lib/apiClient";
+import { ApiError } from "@/lib/apiClient";
 
 function renderForm(impl?: AuthContextValue["changePassword"]) {
   const changePassword = vi.fn(impl ?? (() => Promise.resolve()));
@@ -67,7 +67,7 @@ describe("ChangePasswordForm", () => {
   it("shows backend error and clears form on success", async () => {
     const user = userEvent.setup();
     renderForm(async () => {
-      throw new AuthApiError(401, "密码错误");
+      throw new ApiError(401, "密码错误");
     });
     await user.type(screen.getByLabelText(/^旧密码$/), "Old12345");
     await user.type(screen.getByLabelText(/^新密码$/), "NewSecret1");

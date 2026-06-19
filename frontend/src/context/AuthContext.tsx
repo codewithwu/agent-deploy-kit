@@ -8,10 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { authApi, type UserOut } from "@/lib/authApi";
+import { authApi } from "@/lib/authApi";
 import { tokenStorage } from "@/lib/tokenStorage";
 import { authEvents } from "@/lib/authEvents";
-import { AuthApiError } from "@/lib/apiClient";
+import { ApiError } from "@/lib/apiClient";
+import type { UserOut } from "@/types/api";
 import { toast } from "sonner";
 
 export interface User {
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) dispatch({ type: "set", user: toUser(user) });
       } catch (e) {
         if (cancelled) return;
-        if (e instanceof AuthApiError && e.status === 401) {
+        if (e instanceof ApiError && e.status === 401) {
           tokenStorage.clear();
         }
         dispatch({ type: "clear" });

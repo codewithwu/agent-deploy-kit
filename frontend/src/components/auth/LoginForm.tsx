@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/context/AuthContext"
-import { AuthApiError } from "@/lib/apiClient"
+import { ApiError } from "@/lib/apiClient"
 
 export function LoginForm() {
   const { login } = useAuth()
@@ -22,7 +22,7 @@ export function LoginForm() {
     try {
       await login(usernameOrEmail, password)
     } catch (e) {
-      if (e instanceof AuthApiError) setError(e.detail)
+      if (e instanceof ApiError) setError(e.detail)
       else setError("登录失败,请稍后重试")
     } finally {
       setPending(false)

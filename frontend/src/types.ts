@@ -1,6 +1,8 @@
-export type Role = "user" | "assistant";
+import type { ChatMessage as ApiChatMessage, ChatRole } from "./types/api";
 
-export interface ChatMessage {
+export type Role = ChatRole;
+
+export interface ChatMessage extends Pick<ApiChatMessage, "role" | "content"> {
   /** 客户端生成,用于 React key 与重试定位 */
   id: string;
   role: Role;

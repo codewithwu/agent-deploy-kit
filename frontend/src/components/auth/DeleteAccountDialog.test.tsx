@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DeleteAccountDialog } from "./DeleteAccountDialog";
 import { AuthContext, type AuthContextValue } from "@/context/AuthContext";
-import { AuthApiError } from "@/lib/apiClient";
+import { ApiError } from "@/lib/apiClient";
 
 function renderDialog(
   open: boolean,
@@ -51,7 +51,7 @@ describe("DeleteAccountDialog", () => {
   it("displays backend error detail on failure", async () => {
     const user = userEvent.setup();
     renderDialog(true, async () => {
-      throw new AuthApiError(401, "密码错误");
+      throw new ApiError(401, "密码错误");
     });
     await user.type(screen.getByLabelText(/^密码$/), "wrong");
     await user.click(screen.getByRole("button", { name: /确认注销/ }));
