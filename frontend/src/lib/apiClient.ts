@@ -1,16 +1,8 @@
 import { tokenStorage } from "./tokenStorage";
 import { authEvents } from "./authEvents";
+import { ApiError } from "../types/api";
 
-export class AuthApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly detail: string,
-    public readonly fieldErrors?: Array<{ loc: string[]; msg: string }>,
-  ) {
-    super(detail);
-    this.name = "AuthApiError";
-  }
-}
+export { ApiError };
 
 const DEFAULT_API_BASE = "http://localhost:8000";
 
@@ -54,7 +46,7 @@ function pickToken(auth: "access" | "refresh" | "none"): string | null {
     : tokenStorage.getRefresh();
 }
 
-async function parseError(res: Response): Promise<AuthApiError> {
+async function parseError(res: Response): Promise<ApiError> {
   // clone 以便 body 可被后续读取(204 跳过)
   let body: { detail?: string; errors?: Array<{ loc: string[]; msg: string }> } = {};
   try {
@@ -62,7 +54,7 @@ async function parseError(res: Response): Promise<AuthApiError> {
   } catch {
     // 忽略,fallback 到 statusText
   }
-  return new AuthApiError(res.status, body.detail ?? res.statusText, body.errors);
+  return new ApiError(res.status, body.detail ?? res.statusText, body.errors);
 }
 
 export async function apiFetch(
@@ -105,7 +97,7 @@ export async function apiFetch(
   if (!newAccess) {
     tokenStorage.clear();
     authEvents.emit("logout");
-    throw new AuthApiError(401, "会话已过期,请重新登录");
+    throw new ApiError(401, "会话已过期,请重新登录");
   }
 
   res = await fetch(url, buildInit(newAccess));

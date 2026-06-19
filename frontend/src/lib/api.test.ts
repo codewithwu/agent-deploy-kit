@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ChatApiError, streamChat } from "./api";
+import { ApiError, streamChat } from "./api";
 
 // 把 SSE 帧列表编码成一段完整文本(供一次性入队)
 function sseText(
@@ -89,7 +89,7 @@ describe("streamChat", () => {
     ]);
   });
 
-  it("throws ChatApiError on non-2xx with parsed detail", async () => {
+  it("throws ApiError on non-2xx with parsed detail", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "empty messages" }), {
         status: 400,
@@ -106,9 +106,9 @@ describe("streamChat", () => {
         (e: unknown) => e,
       );
 
-    expect(rejection).toBeInstanceOf(ChatApiError);
-    expect((rejection as ChatApiError).status).toBe(400);
-    expect((rejection as ChatApiError).message).toBe("empty messages");
+    expect(rejection).toBeInstanceOf(ApiError);
+    expect((rejection as ApiError).status).toBe(400);
+    expect((rejection as ApiError).message).toBe("empty messages");
   });
 
   it("yields error event for event: error frame", async () => {

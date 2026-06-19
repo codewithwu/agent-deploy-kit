@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AuthApiError, apiFetch } from "./apiClient";
+import { ApiError, apiFetch } from "./apiClient";
 import { tokenStorage } from "./tokenStorage";
 import { authEvents } from "./authEvents";
 
@@ -67,7 +67,7 @@ describe("apiFetch", () => {
     });
   });
 
-  it("throws AuthApiError on non-2xx with detail and fieldErrors", async () => {
+  it("throws ApiError on non-2xx with detail and fieldErrors", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse(400, {
         detail: "参数错误",
@@ -76,12 +76,12 @@ describe("apiFetch", () => {
     );
 
     await expect(apiFetch("/api/auth/register", { body: {} })).rejects.toThrow(
-      AuthApiError,
+      ApiError,
     );
     try {
       await apiFetch("/api/auth/register", { body: {} });
     } catch (e) {
-      const err = e as AuthApiError;
+      const err = e as ApiError;
       expect(err.status).toBe(400);
       expect(err.detail).toBe("参数错误");
       expect(err.fieldErrors).toEqual([
@@ -133,7 +133,7 @@ describe("apiFetch", () => {
       expect(tokenStorage.getRefresh()).toBe("refresh-2");
     });
 
-    it("on second 401 (after retry) throws AuthApiError(401)", async () => {
+    it("on second 401 (after retry) throws ApiError(401)", async () => {
       vi.spyOn(globalThis, "fetch")
         .mockResolvedValueOnce(jsonResponse(401, { detail: "认证失败" }))
         .mockResolvedValueOnce(
@@ -151,14 +151,14 @@ describe("apiFetch", () => {
       });
     });
 
-    it("on refresh failure: clears tokens, emits logout, throws AuthApiError", async () => {
+    it("on refresh failure: clears tokens, emits logout, throws ApiError", async () => {
       const onLogout = vi.fn();
       authEvents.on("logout", onLogout);
       vi.spyOn(globalThis, "fetch")
         .mockResolvedValueOnce(jsonResponse(401, { detail: "认证失败" }))
         .mockResolvedValueOnce(jsonResponse(401, { detail: "refresh 失败" }));
 
-      await expect(apiFetch("/api/auth/me")).rejects.toThrow(AuthApiError);
+      await expect(apiFetch("/api/auth/me")).rejects.toThrow(ApiError);
       expect(tokenStorage.getAccess()).toBeNull();
       expect(tokenStorage.getRefresh()).toBeNull();
       expect(onLogout).toHaveBeenCalledTimes(1);

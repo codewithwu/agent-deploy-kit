@@ -1,3 +1,7 @@
+import { ApiError, type SSEStepBlock } from "../types/api";
+
+export { ApiError };
+
 const DEFAULT_API_BASE = "http://localhost:8000";
 
 /** 函数内读取,这样测试用 vi.stubEnv 改 VITE_API_BASE 才能生效 */
@@ -6,21 +10,11 @@ function apiBase(): string {
   return v && v.length > 0 ? v : DEFAULT_API_BASE;
 }
 
-export class ChatApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ChatApiError";
-  }
-}
-
 export type StreamEvent =
   | {
       kind: "step";
       step: string;
-      blocks: Array<Record<string, unknown>>;
+      blocks: SSEStepBlock[];
     }
   | { kind: "done" }
   | { kind: "error"; detail: string };
@@ -49,11 +43,11 @@ export async function* streamChat(
     } catch {
       detail = res.statusText;
     }
-    throw new ChatApiError(res.status, detail);
+    throw new ApiError(res.status, detail);
   }
 
   if (!res.body) {
-    throw new ChatApiError(0, "invalid SSE: response has no body");
+    throw new ApiError(0, "invalid SSE: response has no body");
   }
 
   const reader = res.body.getReader();
@@ -70,7 +64,7 @@ export async function* streamChat(
     try {
       parsed = JSON.parse(frame.data) as typeof parsed;
     } catch (err) {
-      throw new ChatApiError(
+      throw new ApiError(
         0,
         `invalid SSE: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -85,7 +79,7 @@ export async function* streamChat(
               kind: "step",
               step: String(parsed.step ?? ""),
               blocks: Array.isArray(parsed.blocks)
-                ? (parsed.blocks as Array<Record<string, unknown>>)
+                ? (parsed.blocks as SSEStepBlock[])
                 : [],
             };
     frame = {};
