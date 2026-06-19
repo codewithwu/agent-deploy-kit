@@ -47,7 +47,7 @@ export function SettingsPage() {
             </div>
             <div>
               <span className="text-muted-foreground">注册时间: </span>
-              {user?.createdAt ? new Date(user.createdAt).toLocaleString() : "-"}
+              {user?.created_at ? new Date(user.created_at).toLocaleString() : "-"}
             </div>
             <div className="pt-2">
               <Button

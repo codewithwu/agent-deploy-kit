@@ -15,35 +15,15 @@ import { ApiError } from "@/lib/apiClient";
 import type { UserOut } from "@/types/api";
 import { toast } from "sonner";
 
-export interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: "user" | "admin";
-  isActive: boolean;
-  createdAt: string;
-}
-
-function toUser(u: UserOut): User {
-  return {
-    id: u.id,
-    username: u.username,
-    email: u.email,
-    role: u.role,
-    isActive: u.is_active,
-    createdAt: u.created_at,
-  };
-}
-
 export type AuthStatus = "loading" | "anonymous" | "authenticated";
 
 interface AuthState {
   status: AuthStatus;
-  user: User | null;
+  user: UserOut | null;
 }
 
 type Action =
-  | { type: "set"; user: User }
+  | { type: "set"; user: UserOut }
   | { type: "clear" };
 
 function reducer(_state: AuthState, action: Action): AuthState {
@@ -57,7 +37,7 @@ function reducer(_state: AuthState, action: Action): AuthState {
 
 export interface AuthContextValue {
   status: AuthStatus;
-  user: User | null;
+  user: UserOut | null;
   isAuthenticated: boolean;
   login(usernameOrEmail: string, password: string): Promise<void>;
   register(username: string, email: string, password: string): Promise<void>;
@@ -89,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const { user } = await authApi.verify();
-        if (!cancelled) dispatch({ type: "set", user: toUser(user) });
+        if (!cancelled) dispatch({ type: "set", user });
       } catch (e) {
         if (cancelled) return;
         if (e instanceof ApiError && e.status === 401) {
@@ -117,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (usernameOrEmail, password) => {
       const out = await authApi.login({ username: usernameOrEmail, password });
       tokenStorage.setTokens(out.access_token, out.refresh_token);
-      dispatch({ type: "set", user: toUser(out.user) });
+      dispatch({ type: "set", user: out.user });
       const target = fromRef.current?.from?.pathname ?? "/";
       navigate(target, { replace: true });
     },
