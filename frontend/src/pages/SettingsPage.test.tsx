@@ -10,8 +10,8 @@ const user = {
   username: "alice",
   email: "alice@x.com",
   role: "user" as const,
-  isActive: true,
-  createdAt: "2026-06-16T00:00:00Z",
+  is_active: true,
+  created_at: "2026-06-16T00:00:00Z",
 };
 
 function renderPage() {
