@@ -57,35 +57,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   // 提前 60s 主动 refresh 的 timer 句柄
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // refresh 函数自身的最新引用,避免 setTimeout 回调里访问未声明的变量触发 lint 报错
+  const refreshFnRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     fromRef.current = location.state as { from?: { pathname?: string } } | null;
   }, [location.state]);
 
-  // 调度下一次主动 refresh。expiresIn 是 access token 的有效秒数,提前 60s 触发。
-  const scheduleNextRefresh = useCallback((expiresInSeconds: number) => {
-    if (refreshTimerRef.current !== null) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    const ttl = Math.max(0, (expiresInSeconds - 60) * 1000);
-    refreshTimerRef.current = setTimeout(() => {
-      void doProactiveRefresh();
-    }, ttl);
-  }, []);
-
-  // 执行主动 refresh。失败时由 apiClient 内部 emit('logout'),由下方 effect 统一清理。
-  const doProactiveRefresh = useCallback(async () => {
+  // 执行 refresh 并按新 expires_in 重置 timer。失败时由 apiClient emit('logout'),下方 effect 统一清理。
+  const doProactiveRefresh = useCallback(async (): Promise<void> => {
     refreshTimerRef.current = null;
     try {
       const pair = await authApi.refresh();
       tokenStorage.setTokens(pair.access_token, pair.refresh_token);
       tokenStorage.setExpiresIn(pair.expires_in);
-      scheduleNextRefresh(pair.expires_in);
+      const ttl = Math.max(0, (pair.expires_in - 60) * 1000);
+      refreshTimerRef.current = setTimeout(() => {
+        void refreshFnRef.current();
+      }, ttl);
     } catch {
       // 静默:apiClient 已在 refresh 失败时 tokenStorage.clear() + emit('logout'),
       // AuthContext 监听 logout 事件的 effect 负责 dispatch + navigate
     }
-  }, [scheduleNextRefresh]);
+  }, []);
+
+  // 同步 ref 与最新 doProactiveRefresh(refresh 成功后会再次调度)
+  useEffect(() => {
+    refreshFnRef.current = doProactiveRefresh;
+  }, [doProactiveRefresh]);
+
+  // 调度下一次主动 refresh。expiresIn 是 access token 的有效秒数,提前 60s 触发。
+  const scheduleNextRefresh = useCallback(
+    (expiresInSeconds: number) => {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      const ttl = Math.max(0, (expiresInSeconds - 60) * 1000);
+      refreshTimerRef.current = setTimeout(() => {
+        void doProactiveRefresh();
+      }, ttl);
+    },
+    [doProactiveRefresh],
+  );
 
   // 组件卸载时清理 timer
   useEffect(() => {
