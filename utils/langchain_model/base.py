@@ -20,4 +20,4 @@ def get_singleton_client(
     Returns:
         LLM 客户端实例
     """
-    return LLMFactory(provider=llm_provider).get_client()
+    return LLMFactory(provider=llm_provider, timeout=120).get_client()

@@ -17,6 +17,12 @@ dependencies = [
     "pyjwt>=2.13.0",
     "redis[hiredis]>=5.0",
     "python-dotenv>=1.2.2",
+    "deepagents>=0.6.11",
+    "tavily-python>=0.7.26",
+    "markdownify>=1.2.2",
+    "pillow>=12.2.0",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
 ]
 
 

@@ -1,23 +1,17 @@
 """code_agent 智能体可用工具集合。"""
 
-import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import cast
 
 from langchain_core.tools import tool
-from pydantic import ValidationError
 
 from agents.code_agent.schemas import (
     BashInput,
-    DecompositionResult,
-    DetectComplexTaskInput,
     EditInput,
     ReadInput,
     WriteInput,
 )
-from utils.langchain_model import get_singleton_client
 
 
 WORKDIR = Path.cwd()
@@ -29,33 +23,6 @@ def safe_path(p: str) -> Path:
     if not path.is_relative_to(WORKDIR):
         raise ValueError(f"Path escapes workspace: {p}")
     return path
-
-
-_DECOMPOSE_PROMPT = """你是任务拆解器。判断用户请求是否属于"复杂任务"——涉及多文件 / 设计权衡 / 目标模糊 / 多步串联。
-
-严格按以下 JSON schema 返回，不要包含其他内容：
-{{
-  "is_complex": bool,
-  "reasoning": "1-3 句判断理由",
-  "subtasks": [
-    {{
-      "id": 1,
-      "title": "祈使句短标题",
-      "description": "1-2 句做什么",
-      "depends_on": [前置 id 列表],
-      "acceptance_criteria": ["1-3 条验收点"]
-    }}
-  ]
-}}
-
-若不复杂，返回：
-{{"is_complex": false, "reasoning": "...", "subtasks": []}}
-
-用户请求：
-{user_request}
-"""
-
-logger = logging.getLogger(__name__)
 
 
 @tool(args_schema=BashInput)
@@ -152,27 +119,3 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
         return f"Edited {path}"
     except Exception as e:
         return f"Error: {e}"
-
-
-@tool(args_schema=DetectComplexTaskInput)
-def detect_complex_task(user_request: str) -> str:
-    """判断用户请求是否属于复杂任务，若是则拆解为子任务列表.
-
-    Args:
-        user_request: 用户的原始请求文本
-
-    Returns:
-        包含 is_complex / reasoning / subtasks 字段的 JSON 字符串，
-        或错误描述
-    """
-    try:
-        client = get_singleton_client(llm_provider="longcat")
-        prompt = _DECOMPOSE_PROMPT.format(user_request=user_request)
-        response = client.invoke(prompt)
-        result = DecompositionResult.model_validate_json(cast("str", response.content))
-    except (ValidationError, ValueError) as e:
-        return f"Error: 内部 LLM 输出无法解析: {e}"
-    except Exception as e:
-        logger.exception("detect_complex_task 内部 LLM 调用失败")
-        return f"Error: 任务拆解失败: {e}"
-    return result.model_dump_json()

@@ -1,74 +1,726 @@
-# 后端接口详细参考
+# API Endpoints · 接口详细参考
 
-> 每个接口独立小节，包含方法、路径、鉴权要求、请求头、请求 / 响应字段、错误码、示例。
-> 索引与模块划分见 [README.md](./README.md)。
+> 所有接口均挂载在 `backend/` 下；按模块分组。错误响应统一为 `{"detail": "...", "errors": [...]}` 格式。
 
 ## 目录
 
-- 健康检查
-  - [GET /health](#get-health)
-- 智能体聊天
-  - [POST /api/chat](#post-apichat)
-  - [POST /api/chat/stream](#post-apichatstream)
-- 用户认证（`/api/auth`）
-  - [POST /api/auth/register](#post-apiauthregister)
-  - [POST /api/auth/login](#post-apiauthlogin)
-  - [POST /api/auth/logout](#post-apiauthlogout)
-  - [POST /api/auth/refresh](#post-apiauthrefresh)
-  - [GET /api/auth/verify](#get-apiauthverify)
-  - [GET /api/auth/me](#get-apiauthme)
-  - [PATCH /api/auth/me/password](#patch-apiauthmepassword)
-  - [DELETE /api/auth/me](#delete-apiauthme)
+> 点击跳转。每个端点的"字段表 + 完整示例 + 错误码"在该小节。
 
-## 通用约定（适用于所有接口）
+**健康检查**
 
-- **Base URL**：开发期 `http://localhost:8000`
-- **Content-Type**：`application/json`（除 SSE 外）
-- **CORS**：开发期全开，前端无需特殊处理
-- **鉴权**：需鉴权接口必须在请求头加 `Authorization: Bearer <token>`
-- **错误**：见 [README.md#通用响应与错误](./README.md#通用响应与错误)
-- **时间格式**：`ISO 8601`（如 `2026-06-16T10:30:00Z`）
+- [GET /health](#get-health)
 
----
+**认证 (`/api/auth`)**
+
+- [POST /api/auth/register](#post-api-auth-register) — 注册
+- [POST /api/auth/login](#post-api-auth-login) — 登录
+- [POST /api/auth/logout](#post-api-auth-logout) — 退出登录
+- [POST /api/auth/refresh](#post-api-auth-refresh) — 刷新 access token
+- [GET /api/auth/verify](#get-api-auth-verify) — 校验 token 有效性
+- [GET /api/auth/me](#get-api-auth-me) — 获取当前用户
+- [PATCH /api/auth/me/password](#patch-api-auth-me-password) — 改密
+- [DELETE /api/auth/me](#delete-api-auth-me) — 注销账号
+
+**聊天 (`/api/chat`)**
+
+- [POST /api/chat](#post-api-chat) — 同步聊天
+- [POST /api/chat/stream](#post-api-chat-stream) — SSE 流式聊天
+
+**附录**
+
+- [附录 A TypeScript 类型](#附录-a-typescript-类型)
+- [附录 B 前端易踩坑](#附录-b-前端易踩坑)
+- [附录 C 文档维护说明](#附录-c-文档维护说明)
+
+> 锚点格式：方法名小写 + 路径分隔符 `-` 替换。GitHub / VS Code 预览 / VitePress / GitLab 均兼容。
 
 ## 健康检查
 
 ### GET /health
 
-服务存活探针。启动期会主动加载智能体（`AGENT_NAME` 缺失 / 子包不存在时此调用会失败）。
+#### Description
 
-**鉴权**：否
+健康检查端点。返回服务是否正常启动。
 
-**响应**：`200 OK`
+#### Parameters
+
+无。
+
+#### Response
+
+**200 OK** · 类型：`HealthResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `status` | string | 是 | 固定值 `"ok"` |
+
+**完整示例**
 
 ```json
 { "status": "ok" }
 ```
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| status | string | 固定为 `"ok"` |
+无错误响应。
 
-**示例**
+#### Examples
+
+**cURL**
 
 ```bash
-curl http://localhost:8000/health
+curl -X GET "https://api.example.com/health"
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/health');
+const { status } = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.get('https://api.example.com/health')
+print(r.json())  # {'status': 'ok'}
 ```
 
 ---
 
-## 智能体聊天
+## 认证 (/api/auth)
 
-> 智能体由 `AGENT_NAME` 环境变量指定（默认 `weather_agent`）。请求体会原样转发给 `agent.invoke` / `agent.stream`。
-> 消息顺序即对话顺序；多轮对话需把历史消息全部回传。
+> 前缀由 `backend/main.py` 的 `app.include_router(auth_router, prefix="/api/auth")` 注入。
+> Token 有效期默认值：`access_token = 15 分钟`、`refresh_token = 7 天`（由 `backend/auth/config.py` 控制，可通过 env 调整）。
+
+### POST /api/auth/register
+
+#### Description
+
+注册新用户。用户名 / 邮箱不可重复，密码需满足强度规则（8-128 位，必须含字母和数字）。
+
+#### Parameters
+
+请求体（`RegisterIn`）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | string | 是 | 3-50 位；仅字母 / 数字 / 下划线 / 点 / 连字符 |
+| `email` | string (email) | 是 | 合法的邮箱格式（前端用 HTML5 type=email + 后端 EmailStr 校验） |
+| `password` | string | 是 | 8-128 位；必须含字母和数字 |
+
+```json
+{
+  "username": "alice",
+  "email": "alice@example.com",
+  "password": "abc12345"
+}
+```
+
+#### Response
+
+**201 Created** · 类型：`RegisterOut`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `user_id` | number | 是 | 新用户主键 |
+| `username` | string | 是 | 用户名（与请求一致） |
+| `email` | string | 是 | 邮箱（与请求一致） |
+| `role` | enum: `user` \| `admin` | 是 | 角色；注册默认 `user` |
+
+**完整示例**
+
+```json
+{
+  "user_id": 1,
+  "username": "alice",
+  "email": "alice@example.com",
+  "role": "user"
+}
+```
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 400 | `参数错误` + `errors[]` | 请求体字段缺失 / 格式错 / 密码强度不足 / 用户名规则不符 |
+| 409 | `用户名已被使用` | `users.username` 唯一约束冲突 |
+| 409 | `邮箱已被使用` | `users.email` 唯一约束冲突 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X POST "https://api.example.com/api/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@example.com","password":"abc12345"}'
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/auth/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    username: 'alice',
+    email: 'alice@example.com',
+    password: 'abc12345',
+  }),
+});
+const user = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.post(
+    'https://api.example.com/api/auth/register',
+    json={'username': 'alice', 'email': 'alice@example.com', 'password': 'abc12345'},
+)
+print(r.status_code, r.json())
+```
+
+---
+
+### POST /api/auth/login
+
+#### Description
+
+用户名 / 密码登录，返回 access + refresh token 配对。`username` 字段同时接受 username 或 email。限速：每分钟 5 次失败尝试 → 429（`AUTH_LOGIN_RATE_LIMIT_PER_MIN`）。
+
+#### Parameters
+
+请求体（`LoginIn`）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | string | 是 | 1-100 位；接受 username 或 email |
+| `password` | string | 是 | 1-128 位 |
+
+```json
+{
+  "username": "alice",
+  "password": "abc12345"
+}
+```
+
+#### Response
+
+**200 OK** · 类型：`LoginOut`（继承 `TokenPairOut`，附加 `user` 字段）
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `access_token` | string (JWT) | 是 | 用于 `Authorization: Bearer ...` 头；默认 **15 分钟**有效 |
+| `refresh_token` | string (JWT) | 是 | 用于 `POST /api/auth/refresh` 换新 token；默认 **7 天**有效 |
+| `token_type` | string | 否，默认 `"bearer"` | 固定值 `"bearer"` |
+| `expires_in` | number | 是 | **单位：秒**。access_token 剩余秒数；前端可据此定时 refresh |
+| `user` | object (`UserOut`) | 是 | 当前登录用户完整信息 |
+| `user.id` | number | 是 | 用户主键 |
+| `user.username` | string | 是 | 用户名（全局唯一） |
+| `user.email` | string | 是 | 邮箱（全局唯一） |
+| `user.role` | enum: `user` \| `admin` | 是 | 角色（当前仅 `user`；预留 `admin`） |
+| `user.is_active` | boolean | 是 | 是否启用；`false` 时该账号无法登录 |
+| `user.created_at` | string (ISO 8601) | 是 | 账号创建时间，UTC |
+
+**完整示例**
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 900,
+  "user": {
+    "id": 1,
+    "username": "alice",
+    "email": "alice@example.com",
+    "role": "user",
+    "is_active": true,
+    "created_at": "2026-06-19T10:30:00Z"
+  }
+}
+```
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 400 | `参数错误` + `errors[]` | 请求体不合法 |
+| 401 | `用户名或密码错误` | username / password 不匹配（防枚举统一文案） |
+| 401 | `用户名或密码错误` | 用户存在但 `is_active=false` |
+| 429 | `尝试过于频繁，请稍后再试` | 限速命中（每 IP 每分钟 5 次，见 `AUTH_LOGIN_RATE_LIMIT_PER_MIN`） |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X POST "https://api.example.com/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"abc12345"}'
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'alice', password: 'abc12345' }),
+});
+const { access_token, refresh_token, expires_in, user } = await res.json();
+// expires_in 单位是秒；建议 setTimeout(refresh, expires_in - 60)
+```
+
+**Python**
+
+```python
+import requests
+r = requests.post(
+    'https://api.example.com/api/auth/login',
+    json={'username': 'alice', 'password': 'abc12345'},
+)
+tokens = r.json()
+```
+
+---
+
+### POST /api/auth/logout
+
+#### Description
+
+退出登录。简化实现：access token 无 jti，仅做依赖校验，不真正撤销任何 token。前端应同时丢弃本地 access / refresh。
+
+#### Parameters
+
+需要 `Authorization: Bearer <access_token>`。
+
+无请求体。
+
+#### Response
+
+**204 No Content** · 无响应体
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 401 | `认证失败` | token 缺失或无效 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X POST "https://api.example.com/api/auth/logout" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**JavaScript**
+
+```js
+await fetch('/api/auth/logout', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${accessToken}` },
+});
+// 同步清除本地 access/refresh token
+```
+
+**Python**
+
+```python
+import requests
+requests.post(
+    'https://api.example.com/api/auth/logout',
+    headers={'Authorization': f'Bearer {access_token}'},
+)
+```
+
+---
+
+### POST /api/auth/refresh
+
+#### Description
+
+用 refresh token 换新 access + refresh。从 `Authorization: Bearer <refresh_token>` 抽取 refresh token。
+
+#### Parameters
+
+需要 `Authorization: Bearer <refresh_token>`（注意：这里是 **refresh**，不是 access）。
+
+无请求体。
+
+#### Response
+
+**200 OK** · 类型：`TokenPairOut`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `access_token` | string (JWT) | 是 | 新 access token；默认 15 分钟有效 |
+| `refresh_token` | string (JWT) | 是 | 新 refresh token；默认 7 天有效 |
+| `token_type` | string | 否，默认 `"bearer"` | 固定值 `"bearer"` |
+| `expires_in` | number | 是 | **单位：秒**。新 access_token 剩余秒数 |
+
+**完整示例**
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 900
+}
+```
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 401 | `认证失败` | Authorization 头缺失 / 不是 Bearer / refresh token 无效 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X POST "https://api.example.com/api/auth/refresh" \
+  -H "Authorization: Bearer YOUR_REFRESH_TOKEN"
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/auth/refresh', {
+  method: 'POST',
+  headers: { 'Authorization': `Bearer ${refreshToken}` },
+});
+const { access_token, refresh_token, expires_in } = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.post(
+    'https://api.example.com/api/auth/refresh',
+    headers={'Authorization': f'Bearer {refresh_token}'},
+)
+new_tokens = r.json()
+```
+
+---
+
+### GET /api/auth/verify
+
+#### Description
+
+校验当前 access token 是否有效，并返回用户信息。常用于前端启动期确认登录态。
+
+#### Parameters
+
+需要 `Authorization: Bearer <access_token>`。
+
+#### Response
+
+**200 OK** · 类型：`VerifyOut`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `valid` | boolean | 是 | 当前恒为 `true`（无效会直接返回 401） |
+| `user` | object (`UserOut`) | 是 | 当前用户完整信息 |
+| `user.id` | number | 是 | 用户主键 |
+| `user.username` | string | 是 | 用户名 |
+| `user.email` | string | 是 | 邮箱 |
+| `user.role` | enum: `user` \| `admin` | 是 | 角色 |
+| `user.is_active` | boolean | 是 | 是否启用 |
+| `user.created_at` | string (ISO 8601) | 是 | 账号创建时间，UTC |
+
+**完整示例**
+
+```json
+{
+  "valid": true,
+  "user": {
+    "id": 1,
+    "username": "alice",
+    "email": "alice@example.com",
+    "role": "user",
+    "is_active": true,
+    "created_at": "2026-06-19T10:30:00Z"
+  }
+}
+```
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 401 | `认证失败` | token 缺失或无效 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X GET "https://api.example.com/api/auth/verify" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/auth/verify', {
+  headers: { 'Authorization': `Bearer ${accessToken}` },
+});
+const { valid, user } = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.get(
+    'https://api.example.com/api/auth/verify',
+    headers={'Authorization': f'Bearer {access_token}'},
+)
+print(r.json())  # {'valid': True, 'user': {...}}
+```
+
+---
+
+### GET /api/auth/me
+
+#### Description
+
+获取当前登录用户的信息。
+
+#### Parameters
+
+需要 `Authorization: Bearer <access_token>`。
+
+#### Response
+
+**200 OK** · 类型：`UserOut`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | number | 是 | 用户主键 |
+| `username` | string | 是 | 用户名（全局唯一） |
+| `email` | string | 是 | 邮箱（全局唯一） |
+| `role` | enum: `user` \| `admin` | 是 | 角色 |
+| `is_active` | boolean | 是 | 是否启用 |
+| `created_at` | string (ISO 8601) | 是 | 账号创建时间，UTC |
+
+**完整示例**
+
+```json
+{
+  "id": 1,
+  "username": "alice",
+  "email": "alice@example.com",
+  "role": "user",
+  "is_active": true,
+  "created_at": "2026-06-19T10:30:00Z"
+}
+```
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 401 | `认证失败` | token 缺失或无效 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X GET "https://api.example.com/api/auth/me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/auth/me', {
+  headers: { 'Authorization': `Bearer ${accessToken}` },
+});
+const user = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.get(
+    'https://api.example.com/api/auth/me',
+    headers={'Authorization': f'Bearer {access_token}'},
+)
+print(r.json())
+```
+
+---
+
+### PATCH /api/auth/me/password
+
+#### Description
+
+改密。可选地在 `Authorization` 头里携带 refresh token 以吊销旧 refresh。
+
+#### Parameters
+
+请求体（`ChangePasswordIn`）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `old_password` | string | 是 | 当前密码（1-128 位） |
+| `new_password` | string | 是 | 新密码（8-128 位，必须含字母和数字） |
+
+```json
+{ "old_password": "abc12345", "new_password": "xyz98765" }
+```
+
+需要 `Authorization: Bearer <access_token>`（同时可在同头携带 refresh token 以吊销旧 refresh，简化约定）。
+
+#### Response
+
+**204 No Content** · 无响应体
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 400 | `参数错误` + `errors[]` | 新密码强度不足 / 字段缺失 |
+| 401 | `认证失败` | access token 缺失或无效 |
+| 401 | `密码错误` | old_password 错误 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X PATCH "https://api.example.com/api/auth/me/password" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"old_password":"abc12345","new_password":"xyz98765"}'
+```
+
+**JavaScript**
+
+```js
+await fetch('/api/auth/me/password', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ old_password: 'abc12345', new_password: 'xyz98765' }),
+});
+```
+
+**Python**
+
+```python
+import requests
+requests.patch(
+    'https://api.example.com/api/auth/me/password',
+    headers={'Authorization': f'Bearer {access_token}'},
+    json={'old_password': 'abc12345', 'new_password': 'xyz98765'},
+)
+```
+
+---
+
+### DELETE /api/auth/me
+
+#### Description
+
+注销当前账号（需校验密码）。
+
+#### Parameters
+
+请求体（`DeleteMeIn`）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `password` | string | 是 | 当前密码（1-128 位） |
+
+```json
+{ "password": "abc12345" }
+```
+
+需要 `Authorization: Bearer <access_token>`。
+
+#### Response
+
+**204 No Content** · 无响应体
+
+**4xx 错误**
+
+| 状态码 | detail | 触发条件 |
+|--------|--------|----------|
+| 401 | `认证失败` | token 缺失或无效 |
+| 401 | `密码错误` | password 错误 |
+
+#### Examples
+
+**cURL**
+
+```bash
+curl -X DELETE "https://api.example.com/api/auth/me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"abc12345"}'
+```
+
+**JavaScript**
+
+```js
+await fetch('/api/auth/me', {
+  method: 'DELETE',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ password: 'abc12345' }),
+});
+```
+
+**Python**
+
+```python
+import requests
+requests.delete(
+    'https://api.example.com/api/auth/me',
+    headers={'Authorization': f'Bearer {access_token}'},
+    json={'password': 'abc12345'},
+)
+```
+
+---
+
+## 聊天 (/api/chat)
+
+> 前缀由 `backend/main.py` 的 `app.include_router(chat_router, prefix="/api/chat")` 注入。
+> 两个端点当前均无鉴权依赖（依赖后端 LLM 配置；详见 `backend/agent_loader.py`）。
 
 ### POST /api/chat
 
-同步调用智能体，阻塞至生成最终回复。
+#### Description
 
-**鉴权**：否
+同步聊天：发送消息列表，返回 agent 的最终回复。
 
-**请求体**
+#### Parameters
+
+请求体（`ChatRequest`）：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `messages` | array | 是 | 消息列表，非空 |
+| `messages[].role` | string | 否，默认 `"user"` | 消息角色（`user` / `assistant` / `system`） |
+| `messages[].content` | string | 是 | 消息内容 |
 
 ```json
 {
@@ -78,478 +730,398 @@ curl http://localhost:8000/health
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| messages | array<object> | 是 | 对话历史，可为空数组（空数组时接口返 400） |
-| messages[].role | string | 是 | 角色，如 `user` / `assistant` / `system` |
-| messages[].content | string | 是 | 消息文本 |
+#### Response
 
-**响应**：`200 OK`
+**200 OK** · 类型：`ChatResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `reply` | string | 是 | agent 最终回复文本；中间步骤被折叠，仅返回最后一条消息的 content |
+
+**完整示例**
 
 ```json
-{ "reply": "北京今天晴，气温 25°C。" }
+{ "reply": "北京今天晴，气温 22-28°C。" }
 ```
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| reply | string | 智能体最后一条消息的 `content`（字符串形式） |
-
-**错误码**
+**4xx / 5xx 错误**
 
 | 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `messages must not be empty` | `messages` 为空数组 |
-| 500 | `<异常消息>` | 智能体调用 / 处理异常 |
+|--------|--------|----------|
+| 400 | `messages must not be empty` | `messages` 数组为空 |
+| 500 | `<异常文本>` | `agent.invoke` 抛异常（LLM / 工具错误等） |
+| 500 | `agent returned no messages` | agent 返回结果里没有 messages |
 
-**示例**
+#### Examples
+
+**cURL**
 
 ```bash
-curl -X POST http://localhost:8000/api/chat \
+curl -X POST "https://api.example.com/api/chat" \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"北京天气"}]}'
+  -d '{"messages":[{"role":"user","content":"你好"}]}'
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages: [{ role: 'user', content: '你好' }],
+  }),
+});
+const { reply } = await res.json();
+```
+
+**Python**
+
+```python
+import requests
+r = requests.post(
+    'https://api.example.com/api/chat',
+    json={'messages': [{'role': 'user', 'content': '你好'}]},
+)
+print(r.json())  # {'reply': '...'}
 ```
 
 ---
 
 ### POST /api/chat/stream
 
-SSE 流式调用智能体，输出中间步骤与最终结束事件。详见 [README.md#流式聊天 SSE 协议](./README.md#流式聊天sse-协议)。
+#### Description
 
-**鉴权**：否
+SSE 流式聊天：服务端按 agent 步骤产出事件，前端逐块渲染。
 
-**请求体**：与 `POST /api/chat` 完全一致。
+响应头：`Content-Type: text/event-stream`、`Cache-Control: no-store`、`X-Accel-Buffering: no`（禁用 nginx 缓冲）。
 
-**响应**：`200 OK`，`Content-Type: text/event-stream`，流中持续输出 SSE 事件。
+#### Parameters
 
-**事件清单**
+请求体（`ChatRequest`）：与 `POST /api/chat` 相同。
 
-| 事件 | data | 说明 |
-|---|---|---|
-| `step` | `{"step": "<name>", "blocks": [...]}` | LangChain 中间步骤；`blocks` 来自该步最后一条消息的 `content_blocks` |
-| `done` | `{}` | 正常结束 |
-| `error` | `{"detail": "<message>"}` | 流中异常（响应头已发出，仅以事件形式通知） |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `messages` | array | 是 | 消息列表，非空 |
+| `messages[].role` | string | 否，默认 `"user"` | 消息角色 |
+| `messages[].content` | string | 是 | 消息内容 |
 
-每块包含 `event` / 可选 `id`（uuid4 hex）/ `data` 三行，块间空行。
+```json
+{
+  "messages": [
+    { "role": "user", "content": "北京今天天气怎么样？" }
+  ]
+}
+```
 
-**响应头**
+#### Response
 
-| 头 | 值 |
-|---|---|
-| Cache-Control | no-store |
-| X-Accel-Buffering | no |
+**200 OK** · SSE 流 · 类型：每行一个事件
 
-**错误码**
+每条 SSE 事件三段：`id`（可选，UUID hex）、`event`（事件名）、`data`（JSON）。
+
+**事件：`step`**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `step` | string | 是 | agent 步骤名，例如 `model`、`tools` |
+| `blocks` | array | 是 | 该步骤产出的内容块列表，元素结构由 LangChain content_blocks 决定 |
+| `blocks[].type` | string | 是 | 块类型（`text` / `tool_call` / `tool_result` 等） |
+
+**事件：`done`**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| （无字段） | — | — | 流结束标记；`data: {}` |
+
+**事件：`error`**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `detail` | string | 是 | 异常文本；流已开始故不会触发 HTTP 错误 |
+
+**完整示例**
+
+```
+id: 8a3f1c2e...
+event: step
+data: {"step":"model","blocks":[{"type":"text","text":"正在查询天气..."}]}
+
+id: c12a9b04...
+event: step
+data: {"step":"tools","blocks":[{"type":"tool_call","name":"get_weather","args":{"city":"北京"}}]}
+
+id: f0d4e512...
+event: done
+data: {}
+
+```
+
+**4xx / 5xx 错误**
 
 | 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `messages must not be empty` | `messages` 为空数组 |
-| 500 | （以 `error` 事件形式） | 流中智能体异常 |
+|--------|--------|----------|
+| 400 | `messages must not be empty` | `messages` 数组为空 |
 
-**前端消费示例**（伪代码）
+> 流中异常：流已经开始后 agent 内部异常不会触发 HTTP 错误，而是以 `event: error` 形式追加到流末尾。
 
-```ts
-const res = await fetch(`${API_BASE}/api/chat/stream`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ messages }),
+#### Examples
+
+**cURL**
+
+```bash
+curl -N -X POST "https://api.example.com/api/chat/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"你好"}]}'
+```
+
+**JavaScript**
+
+```js
+const res = await fetch('/api/chat/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages: [{ role: 'user', content: '你好' }],
+  }),
 });
-const reader = res.body!.getReader();
+const reader = res.body.getReader();
 const decoder = new TextDecoder();
-let buf = "";
+const buffer = { event: '', data: '' };
 while (true) {
   const { value, done } = await reader.read();
   if (done) break;
-  buf += decoder.decode(value, { stream: true });
-  // 按 "\n\n" 切块，解析 event / id / data
-  // data: 行是 JSON 字符串
-}
-```
-
-> 实际前端封装见 `frontend/src/lib/api.ts` 的 `streamChat(messages, signal)`，返回 `AsyncGenerator<StreamEvent>`。
-
----
-
-## 用户认证（`/api/auth`）
-
-> 路由源：`backend/auth/routes.py`，由 `app.include_router(auth_router, prefix="/api/auth")` 挂载。
-> Token 签发 / 校验：`backend/auth/security.py`；配置：`backend/auth/config.py`（`.env` 中调整 TTL、Redis、限速等）。
-
-### 公共模型
-
-`UserOut`（公开用户视图，密码相关字段一律不返回）：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | integer | 用户 ID（自增） |
-| username | string | 用户名（3-50 位，`[A-Za-z0-9_.-]`） |
-| email | string | 邮箱 |
-| role | string | 角色，取值 `user` / `admin` |
-| is_active | boolean | 是否启用；软删后为 `false` |
-| created_at | string (ISO 8601) | 创建时间 |
-
-`TokenPairOut`：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| access_token | string | 短期 access token（默认 15 分钟有效） |
-| refresh_token | string | 长期 refresh token（默认 7 天有效） |
-| token_type | string | 固定 `"bearer"` |
-| expires_in | integer | access token 剩余秒数 |
-
-`RegisterOut`：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| user_id | integer | 新用户 ID |
-| username | string | 用户名 |
-| email | string | 邮箱 |
-| role | string | 固定 `"user"` |
-
-`VerifyOut`：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| valid | boolean | 固定 `true`（鉴权失败时已 401） |
-| user | UserOut | 当前用户信息 |
-
-### POST /api/auth/register
-
-注册新用户，角色固定为 `user`。
-
-**鉴权**：否
-
-**请求体**
-
-```json
-{
-  "username": "alice",
-  "email": "alice@example.com",
-  "password": "Secret123"
-}
-```
-
-| 字段 | 类型 | 必填 | 校验 |
-|---|---|---|---|
-| username | string | 是 | 3-50 位，仅字母 / 数字 / 下划线 / 点 / 连字符 |
-| email | string | 是 | 合法邮箱格式 |
-| password | string | 是 | 8-128 位，必须含字母 + 数字 |
-
-**响应**：`201 Created`
-
-```json
-{
-  "user_id": 42,
-  "username": "alice",
-  "email": "alice@example.com",
-  "role": "user"
-}
-```
-
-**错误码**
-
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `参数错误` + `errors` | 字段格式不通过 Pydantic 校验 |
-| 409 | `用户名已被使用` | username 冲突 |
-| 409 | `邮箱已被使用` | email 冲突 |
-
-**示例**
-
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"alice@example.com","password":"Secret123"}'
-```
-
----
-
-### POST /api/auth/login
-
-登录。`username` 字段兼容「用户名」或「邮箱」。
-
-**鉴权**：否
-
-**限速**：单 IP 每分钟最多 5 次失败尝试，超出返 `429`（内存计数器，进程重启清零）。
-
-**请求体**
-
-```json
-{
-  "username": "alice",
-  "password": "Secret123"
-}
-```
-
-| 字段 | 类型 | 必填 | 校验 |
-|---|---|---|---|
-| username | string | 是 | 1-100 位 |
-| password | string | 是 | 1-128 位 |
-
-**响应**：`200 OK`
-
-```json
-{
-  "access_token": "eyJhbGciOi...",
-  "refresh_token": "eyJhbGciOi...",
-  "token_type": "bearer",
-  "expires_in": 900,
-  "user": {
-    "id": 42,
-    "username": "alice",
-    "email": "alice@example.com",
-    "role": "user",
-    "is_active": true,
-    "created_at": "2026-06-16T10:30:00Z"
+  for (const line of decoder.decode(value).split('\n')) {
+    if (line.startsWith('event: ')) buffer.event = line.slice(7);
+    else if (line.startsWith('data: ')) buffer.data = line.slice(6);
+    else if (line === '') {
+      // 空行 = 一个事件结束
+      if (buffer.event === 'step') console.log('STEP:', JSON.parse(buffer.data));
+      else if (buffer.event === 'done') console.log('STREAM END');
+      else if (buffer.event === 'error') console.error('ERROR:', buffer.data);
+      buffer.event = ''; buffer.data = '';
+    }
   }
 }
 ```
 
-**错误码**
+**Python**
 
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `参数错误` + `errors` | 字段缺失 / 长度不合法 |
-| 401 | `用户名或密码错误` | 用户不存在 / 密码错 / 账号已停用（统一文案防枚举） |
-| 429 | `尝试过于频繁，请稍后再试` | 单 IP 1 分钟内失败次数 ≥ `LOGIN_RATE_LIMIT_PER_MIN`（默认 5） |
-
-**示例**
-
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"Secret123"}'
+```python
+import requests
+with requests.post(
+    'https://api.example.com/api/chat/stream',
+    json={'messages': [{'role': 'user', 'content': '你好'}]},
+    stream=True,
+) as r:
+    for line in r.iter_lines():
+        if line:
+            print(line.decode('utf-8'))
 ```
 
 ---
 
-### POST /api/auth/logout
+## 附录 A TypeScript 类型
 
-登出。简化实现：仅校验 access token 依赖，不真正吊销 token（access 无 jti）。前端应同时丢弃本地的 access / refresh。
+> 与后端 Pydantic 模型一一对应。前端可整体复制到 `src/types.ts`。
+> 命名约定：保持 `snake_case`（与后端一致；不要转 camelCase，避免维护成本翻倍）。
 
-**鉴权**：是（access token）
+```ts
+// === 认证 ===
 
-**请求体**：无
+export type UserRole = 'user' | 'admin';
 
-**响应**：`204 No Content`
+export interface UserOut {
+  id: number;
+  username: string;     // 全局唯一
+  email: string;        // 全局唯一
+  role: UserRole;
+  is_active: boolean;   // false 时无法登录
+  created_at: string;   // ISO 8601, UTC, e.g. "2026-06-19T10:30:00Z"
+}
 
-**错误码**
+export interface RegisterIn {
+  username: string;     // 3-50, 仅 [A-Za-z0-9_.\-]
+  email: string;        // RFC 5322 email
+  password: string;     // 8-128, 必须含字母+数字
+}
 
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 401 | `认证失败` | 缺 / 错 / 过期 access token |
+export interface RegisterOut {
+  user_id: number;
+  username: string;
+  email: string;
+  role: UserRole;
+}
 
-**示例**
+export interface LoginIn {
+  username: string;     // 1-100, 接受 username 或 email
+  password: string;     // 1-128
+}
 
-```bash
-curl -X POST http://localhost:8000/api/auth/logout \
-  -H "Authorization: Bearer <access_token>"
-```
+export interface TokenPairOut {
+  access_token: string;    // JWT, 默认 15 分钟有效
+  refresh_token: string;   // JWT, 默认 7 天有效
+  token_type: 'bearer';
+  expires_in: number;      // 单位: 秒, access_token 剩余秒数
+}
 
----
+export interface LoginOut extends TokenPairOut {
+  user: UserOut;
+}
 
-### POST /api/auth/refresh
+export interface ChangePasswordIn {
+  old_password: string;    // 1-128
+  new_password: string;    // 8-128, 必须含字母+数字
+}
 
-用 refresh token 换新 access + refresh（rotating）。旧 refresh 进 Redis 黑名单直至其原始过期时间。
+export interface DeleteMeIn {
+  password: string;        // 1-128
+}
 
-**鉴权**：是（refresh token，从 `Authorization: Bearer <...>` 头取）
+export interface VerifyOut {
+  valid: true;             // 无效直接 401; 不会返回 false
+  user: UserOut;
+}
 
-**请求体**：无
+// === 健康 ===
 
-**响应**：`200 OK`
+export interface HealthResponse {
+  status: 'ok';
+}
 
-```json
-{
-  "access_token": "eyJhbGciOi...",
-  "refresh_token": "eyJhbGciOi...",
-  "token_type": "bearer",
-  "expires_in": 900
+// === 聊天 ===
+
+export type ChatRole = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  /** 消息角色；后端默认 `"user"`（不传即 user），且接受任意字符串。
+   *  这里只列出常见值；如后端引入新角色，需要同步扩展联合类型。 */
+  role?: ChatRole;
+  content: string;
+}
+
+export interface ChatRequest {
+  messages: ChatMessage[];  // 非空
+}
+
+export interface ChatResponse {
+  reply: string;            // agent 最终回复文本
+}
+
+// === SSE 事件（仅 /api/chat/stream） ===
+
+export interface SSEStepBlock {
+  type: string;             // 'text' | 'tool_call' | 'tool_result' 等, 由 LangChain 决定
+  [k: string]: unknown;     // 其他字段取决于 type
+}
+
+export interface SSEStepEvent {
+  step: string;             // agent 步骤名, 如 'model' / 'tools'
+  blocks: SSEStepBlock[];
+}
+
+export type SSEDoneEvent = Record<string, never>;
+
+export interface SSEErrorEvent {
+  detail: string;
+}
+
+// 解析后的统一事件形态
+export type SSEEvent =
+  | { event: 'step'; id?: string; data: SSEStepEvent }
+  | { event: 'done'; id?: string; data: SSEDoneEvent }
+  | { event: 'error'; id?: string; data: SSEErrorEvent };
+
+// === 统一错误响应 ===
+
+export interface ApiError {
+  detail: string;           // 人类可读错误描述, 必有
+  errors?: Array<{          // 仅在 400 (Pydantic 校验失败) 时出现
+    field?: string;
+    message: string;
+  }>;
 }
 ```
 
-**错误码**
+### TypeScript 类型使用提示
 
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 401 | `认证失败` | 缺 / 错 / 过期 / 已吊销的 refresh token |
-
-**示例**
-
-```bash
-curl -X POST http://localhost:8000/api/auth/refresh \
-  -H "Authorization: Bearer <refresh_token>"
-```
-
-> 前端建议在 catch 到 401 后自动走 refresh 续签后重放原请求。
+- `expires_in` 是**秒**，倒计时用 `(expires_in - 60) * 1000` ms
+- `created_at` 是字符串，不是 `Date`；需要 `new Date(s)` 转换
+- `UserRole` 是字面量联合类型，可直接用于 switch / 条件渲染
+- `SSEEvent` 是判别联合（discriminated union），用 `if (e.event === 'step')` 可自动收窄类型
 
 ---
 
-### GET /api/auth/verify
+## 附录 B 前端易踩坑
 
-校验当前 access token 有效性，返用户信息。常用于前端启动 / 刷新页面时确认登录态。
+按"踩坑 → 后果 → 正确做法"列出。所有条目都对应源码里的真实行为，不是凭空猜测。
 
-**鉴权**：是（access token）
+### B.1 `/api/auth/refresh` 用 refresh_token 作 Bearer
 
-**请求体**：无
+- **踩坑**：照搬其他端点拼 `Authorization: Bearer <access_token>` 去 refresh
+- **后果**：永远 401，access token 永远刷不出来，用户被踢回登录页
+- **正确**：用 **refresh_token** 作 Bearer；详见该端点文档
 
-**响应**：`200 OK`
+### B.2 `/api/auth/logout` 不真正撤销 token
 
-```json
-{
-  "valid": true,
-  "user": {
-    "id": 42,
-    "username": "alice",
-    "email": "alice@example.com",
-    "role": "user",
-    "is_active": true,
-    "created_at": "2026-06-16T10:30:00Z"
-  }
-}
-```
+- **踩坑**：以为后端把 token 加了黑名单，只调 logout 不清本地
+- **后果**：token 在剩余有效期内仍可被复用（直到 access 15 分钟过期）
+- **正确**：后端仅做依赖校验，**前端必须自己清掉两个 token**（access + refresh）
 
-**错误码**
+### B.3 `/api/auth/login` 防枚举统一文案
 
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 401 | `认证失败` | 缺 / 错 / 过期 access token |
+- **踩坑**：前端根据 detail 文案区分"用户名错"和"密码错"
+- **后果**：账号枚举攻击向量被你主动提供给攻击者
+- **正确**：后端三种情况（用户名错 / 密码错 / 账号禁用）都返回 `用户名或密码错误`；前端不要做这种区分
 
-**示例**
+### B.4 `expires_in` 单位是秒不是毫秒
 
-```bash
-curl http://localhost:8000/api/auth/verify \
-  -H "Authorization: Bearer <access_token>"
-```
+- **踩坑**：`setTimeout(refresh, expires_in)` 写错
+- **后果**：登录后 1 秒内就触发 refresh，刷新风暴
+- **正确**：`setTimeout(refresh, (expires_in - 60) * 1000)`（提前 60s）
 
----
+### B.5 `/api/auth/me/password` 同 Authorization 头可塞两 token
 
-### GET /api/auth/me
+- **踩坑**：以为 refresh token 要单独请求 / 单独头
+- **后果**：不知道能借改密机会吊销旧 refresh，refresh 泄露后无法即时失效
+- **正确**：在 `Authorization: Bearer <access>` 后面追加 refresh token（用同样 Bearer 格式）即可，旧 refresh 会进黑名单
 
-取当前登录用户资料。
+### B.6 `/api/auth/login` 限速按 IP
 
-**鉴权**：是（access token）
+- **踩坑**：登录按钮不加防抖
+- **后果**：用户连点 5 次 → 429 → 1 分钟内无法登录（即便密码对）
+- **正确**：UI 上 disable 按钮 + 请求 in-flight 时禁用
 
-**请求体**：无
+### B.7 `/api/chat/stream` 流中异常不返回 HTTP 错误
 
-**响应**：`200 OK`（`UserOut`）
+- **踩坑**：以为流断了就是网络问题，重连
+- **后果**：agent 内部异常被忽略，前端以为还在流
+- **正确**：监听 `event: error` 事件；该事件表示 agent 抛错，对应 `data.detail` 是异常文本
 
-```json
-{
-  "id": 42,
-  "username": "alice",
-  "email": "alice@example.com",
-  "role": "user",
-  "is_active": true,
-  "created_at": "2026-06-16T10:30:00Z"
-}
-```
+### B.8 Pydantic `EmailStr` 校验较严
 
-**错误码**
+- **踩坑**：以为 `not-an-email` 也能注册
+- **后果**：后端 400 + `errors[]`；前端没校验就是脏数据
+- **正确**：前端用 HTML5 `<input type="email">` 预校验；后端是权威
 
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 401 | `认证失败` | 缺 / 错 / 过期 access token |
+### B.9 错误响应 `errors[]` 只在 Pydantic 校验失败（400）时出现
 
-**示例**
+- **踩坑**：以为所有错误都有 `errors[]`
+- **后果**：业务错误（401 / 409 / 429）的响应里访问 `errors` 拿到 `undefined`，代码崩
+- **正确**：401 / 409 / 429 只读 `detail`；仅 400 需要展开 `errors[]`
 
-```bash
-curl http://localhost:8000/api/auth/me \
-  -H "Authorization: Bearer <access_token>"
-```
+### B.10 `/api/chat` 与 `/api/chat/stream` 鉴权缺失
+
+- **踩坑**：以为所有非 `/health` 端点都要 Bearer
+- **后果**：在前端 fetch 里硬塞 Authorization，污染请求
+- **正确**：这两个聊天端点当前**不校验鉴权**（依赖后端 LLM 配置）；前端不要给它们加 Bearer 头
 
 ---
 
-### PATCH /api/auth/me/password
+## 附录 C 文档维护说明
 
-修改密码。请求头传 access token。
+- 字段定义来自 `backend/auth/schemas.py`（认证）+ `backend/schemas.py`（聊天、健康）
+- Token 有效期来自 `backend/auth/config.py`（`access_token_expire_minutes=15`、`refresh_token_expire_days=7`）
+- 限速默认值来自 `backend/auth/config.py`（`login_rate_limit_per_min=5`）
+- 修改后端任一字段 / 端点 / 配置后，**必须同步更新本文件**（按 api-documentation-generator 技能走流程）
 
-**鉴权**：是（access token）
-
-**请求体**
-
-```json
-{
-  "old_password": "Secret123",
-  "new_password": "NewSecret456"
-}
-```
-
-| 字段 | 类型 | 必填 | 校验 |
-|---|---|---|---|
-| old_password | string | 是 | 1-128 位 |
-| new_password | string | 是 | 8-128 位，必须含字母 + 数字 |
-
-**响应**：`204 No Content`
-
-**错误码**
-
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `参数错误` + `errors` | 字段缺失 / 长度 / 强度不通过 |
-| 401 | `认证失败` | 缺 / 错 / 过期 access token |
-| 401 | `密码错误` | 旧密码不正确 |
-
-**示例**
-
-```bash
-curl -X PATCH http://localhost:8000/api/auth/me/password \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"old_password":"Secret123","new_password":"NewSecret456"}'
-```
-
-> 改密**不会**自动吊销当前 refresh token：源码 `backend/auth/routes.py:change_password` 期望从 `Authorization` 头里取 refresh token 与 access 区分，但鉴权依赖已占用该头，实际只能取到 access token，refresh 吊销分支会静默跳过。若需「改密即下线所有设备」，需前端在改密成功后调 `POST /api/auth/logout` + 丢弃本地 refresh，或由后端扩展独立 header。
-
----
-
-### DELETE /api/auth/me
-
-软删当前账号（`is_active=false`）。账号停用后无法再登录（`InvalidCredentials` 走统一文案），但 access token 在过期前仍能调 `/verify` / `/me`（`get_current_user` 不强制 `is_active`，由前端决定跳转）。
-
-**鉴权**：是（access token）
-
-**请求体**
-
-```json
-{ "password": "Secret123" }
-```
-
-| 字段 | 类型 | 必填 | 校验 |
-|---|---|---|---|
-| password | string | 是 | 1-128 位 |
-
-**响应**：`204 No Content`
-
-**错误码**
-
-| 状态码 | detail | 触发条件 |
-|---|---|---|
-| 400 | `参数错误` + `errors` | 字段缺失 / 长度不合法 |
-| 401 | `认证失败` | 缺 / 错 / 过期 access token |
-| 401 | `密码错误` | 密码不正确 |
-
-**示例**
-
-```bash
-curl -X DELETE http://localhost:8000/api/auth/me \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"password":"Secret123"}'
-```
-
----
-
-## 附：环境变量（影响接口行为）
-
-> 来源：`backend/auth/config.py`、`.env`。
-
-| 变量 | 默认值 | 影响 |
-|---|---|---|
-| `JWT_SECRET` | 必填（≥16 位） | Token 签发 / 校验密钥 |
-| `JWT_ALGORITHM` | `HS256` | JWT 算法 |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | access token 寿命（分钟） |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | refresh token 寿命（天） |
-| `REDIS_URL` | `redis://:158168@localhost:6379/0` | refresh 黑名单存储 |
-| `LOGIN_RATE_LIMIT_PER_MIN` | `5` | 单 IP 每分钟登录失败上限 |
-| `DATABASE_URL` | 必填 | 同步 DB 连接（迁移） |
-| `DATABASE_ASYNC_URL` | 必填 | 异步 DB 连接（auth 业务） |
-| `AGENT_NAME` | 必填 | 启动期加载的智能体名 |

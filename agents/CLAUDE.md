@@ -49,4 +49,3 @@ agents/
 ## 模型与 provider
 
 - LLM 客户端统一通过 `utils.langchain_model.get_singleton_client(provider=...)` 获取；新增 provider 走 `.env` + 该工具函数，不在 `agent.py` 内直接 `os.getenv`。
-- `system_prompt` 写在 `agent.py` 的 `create_agent` 调用里，避免分散在多处。
