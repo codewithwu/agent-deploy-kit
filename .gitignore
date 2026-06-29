@@ -221,3 +221,18 @@ __marimo__/
 
 # Interview preparation (mianshi)
 mianshi/
+
+# ── 项目特定忽略 ─────────────────────────────────────────────────
+# scratch / 临时文件
+agents/hello.txt
+backend.md
+jupyter/main.ipynb
+
+# 大模型权重（通过 utils.model_download 下载）
+agents/semantic_search_agent/my_models/qwen/Qwen3-Reranker-0___6B/
+
+# 构建产物：FAISS 向量索引（运行 pre_data.py 重新生成）
+agents/hyper_rag_agent/faiss_index/
+
+# 示例数据库
+agents/sql_agent/data/Chinook.db
