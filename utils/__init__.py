@@ -1,3 +1,5 @@
-"""工具模块集合."""
+# """工具模块集合."""
 
-__all__: list[str] = []
+from utils.model_download import download_model_from_modelscope
+
+__all__ = ["download_model_from_modelscope"]
